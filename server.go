@@ -18,21 +18,10 @@ func Listen(l net.Listener) {
 	state := make(chan State)
 	go Manager(ch, state)
 
-	var next_man = res.Man(0)
+	disconnect := make(chan res.Man, res.Man_count)
 
-	disconnect := make(chan res.Man)
-
-	for next_man < res.Man_count {
-		conn, err := l.Accept()
-		if err != nil {
-			panic(err)
-		}
-
-		ch := make(chan *res.Packet)
-		register <- ch
-
-		go Serve(conn, ch, broadcast, <-state, next_man, disconnect)
-		next_man++
+	for next_man := res.Man(0); next_man < res.Man_count; next_man++ {
+		disconnect <- next_man
 	}
 
 	for next_man := range disconnect {
@@ -44,7 +33,17 @@ func Listen(l net.Listener) {
 		ch := make(chan *res.Packet)
 		register <- ch
 
-		go Serve(conn, ch, broadcast, <-state, next_man, disconnect)
+		go Serve(conn, ch, broadcast, <-state, next_man, func(man res.Man) func() {
+			return func() {
+				disconnect <- man
+				go func() {
+					for _ = range ch {
+						// do nothing
+					}
+				}()
+				unregister <- ch
+			}
+		}(next_man))
 	}
 }
 
@@ -60,6 +59,7 @@ func Multicast(broadcast <-chan *res.Packet, register, unregister <-chan chan<- 
 			for i, ch2 := range writers {
 				if ch == ch2 {
 					writers = append(writers[:i], writers[i+1:]...)
+					close(ch)
 					break
 				}
 			}
@@ -72,8 +72,8 @@ func Multicast(broadcast <-chan *res.Packet, register, unregister <-chan chan<- 
 	}
 }
 
-func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state State, man res.Man, disconnect chan<- res.Man) {
-	defer func() { disconnect <- man }()
+func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state State, man res.Man, disconnect func()) {
+	defer disconnect()
 	defer conn.Close()
 
 	read, write := make(chan *res.Packet), make(chan *res.Packet)

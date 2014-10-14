@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"github.com/Rnoadm/wdvn/res"
 	"github.com/skelterjohn/go.wde"
 	_ "github.com/skelterjohn/go.wde/init"
 	"net"
@@ -29,9 +28,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		in, out := make(chan *res.Packet), make(chan *res.Packet)
-		go Client(conn, in, out)
-		go GUI(out, in)
+		go Client(conn)
 
 		wde.Run()
 	} else if *flagHost != "" {

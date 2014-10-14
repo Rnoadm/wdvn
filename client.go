@@ -12,21 +12,6 @@ import (
 	"time"
 )
 
-func Client(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet) {
-	defer conn.Close()
-
-	write := make(chan *res.Packet)
-	go Read(conn, out)
-	go Write(conn, write)
-
-	for {
-		select {
-		case p := <-in:
-			write <- p
-		}
-	}
-}
-
 type State struct {
 	Me   res.Man
 	Mans [res.Man_count]struct {
@@ -34,30 +19,38 @@ type State struct {
 	}
 }
 
-func GUI(in <-chan *res.Packet, out chan<- *res.Packet) {
+func Client(conn net.Conn) {
+	defer conn.Close()
+
+	read, write := make(chan *res.Packet), make(chan *res.Packet)
+	go Read(conn, read)
+	go Write(conn, write)
+
 	defer wde.Stop()
 
 	w, err := wde.NewWindow(800, 300)
 	if err != nil {
 		panic(err)
 	}
+	defer w.Close()
 
 	w.Show()
 
 	var state State
 	var mouse *image.Point
 
-	tick := time.Tick(time.Second / 100)
+	tick := time.NewTicker(time.Second / 100)
+	defer tick.Stop()
 
 	for {
 		select {
-		case <-tick:
+		case <-tick.C:
 			if mouse != nil {
 				width, height := w.Size()
 				x, y := int64(mouse.X-width/2), int64(mouse.Y-height/2)
 				x += state.Mans[state.Me].X
 				y += state.Mans[state.Me].Y
-				go Send(out, &res.Packet{
+				go Send(write, &res.Packet{
 					Type: res.Type_MoveMan.Enum(),
 					X:    proto.Int64(x),
 					Y:    proto.Int64(y),
@@ -67,10 +60,14 @@ func GUI(in <-chan *res.Packet, out chan<- *res.Packet) {
 		case <-repaintch:
 			Render(w, state)
 
-		case p := <-in:
+		case p, ok := <-read:
+			if !ok {
+				return
+			}
+
 			switch p.GetType() {
 			case res.Type_Ping:
-				go Send(out, p)
+				go Send(write, p)
 
 			case res.Type_SelectMan:
 				state.Me = p.GetMan()
