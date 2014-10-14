@@ -207,20 +207,22 @@ func init() {
 	}
 }
 
-var ground = image.NewUniform(color.RGBA{255, 255, 255, 255})
+var ground = image.NewUniform(color.RGBA{0, 0, 0, 255})
+var sky = image.NewUniform(color.RGBA{255, 255, 255, 255})
 
 func Render(w wde.Window, me res.Man, state State) {
 	img := image.NewRGBA(w.Screen().Bounds())
 
 	offX := int64(img.Rect.Dx()/2-sprites[me].Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
-	offY := int64(img.Rect.Dy()/2-sprites[me].Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
+	offY := int64(img.Rect.Dy()/2+sprites[me].Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
 
-	draw.Draw(img, image.Rect(img.Rect.Min.X, int(offY), img.Rect.Max.X, img.Rect.Max.Y), ground, image.ZP, draw.Over)
+	draw.Draw(img, image.Rect(img.Rect.Min.X, img.Rect.Min.Y, img.Rect.Max.X, int(offY)), sky, image.ZP, draw.Src)
+	draw.Draw(img, image.Rect(img.Rect.Min.X, int(offY), img.Rect.Max.X, img.Rect.Max.Y), ground, image.ZP, draw.Src)
 
 	for i := range state.Mans {
 		draw.Draw(img, sprites[i].Rect.Add(image.Point{
 			X: int(state.Mans[i].Position.X/PixelSize + offX),
-			Y: int(state.Mans[i].Position.Y/PixelSize + offY),
+			Y: int(state.Mans[i].Position.Y/PixelSize+offY) - sprites[i].Rect.Dy(),
 		}), sprites[i], image.ZP, draw.Over)
 	}
 
