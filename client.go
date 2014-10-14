@@ -207,11 +207,15 @@ func init() {
 	}
 }
 
+var ground = image.NewUniform(color.RGBA{255, 255, 255, 255})
+
 func Render(w wde.Window, me res.Man, state State) {
 	img := image.NewRGBA(w.Screen().Bounds())
 
 	offX := int64(img.Rect.Dx()/2-sprites[me].Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
 	offY := int64(img.Rect.Dy()/2-sprites[me].Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
+
+	draw.Draw(img, image.Rect(img.Rect.Min.X, int(offY), img.Rect.Max.X, img.Rect.Max.Y), ground, image.ZP, draw.Over)
 
 	for i := range state.Mans {
 		draw.Draw(img, sprites[i].Rect.Add(image.Point{

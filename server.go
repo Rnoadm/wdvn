@@ -160,6 +160,9 @@ func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Pack
 			for i := range state.Mans {
 				// TODO: check for ground
 				onGround := false
+				if state.Mans[i].Position.Y >= 0 {
+					onGround = true
+				}
 
 				if onGround {
 					// TODO: deal physics damage based on velocity
@@ -170,11 +173,11 @@ func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Pack
 					if input[i].GetKeyRight() == res.Button_pressed {
 						state.Mans[i].Acceleration.X = 0
 					} else {
-						state.Mans[i].Acceleration.X = -PixelSize
+						state.Mans[i].Acceleration.X = -2 * PixelSize
 					}
 				} else {
 					if input[i].GetKeyRight() == res.Button_pressed {
-						state.Mans[i].Acceleration.X = PixelSize
+						state.Mans[i].Acceleration.X = 2 * PixelSize
 					} else {
 						state.Mans[i].Acceleration.X = 0
 					}
@@ -183,7 +186,11 @@ func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Pack
 					state.Mans[i].Acceleration.X = 0
 				}
 				if onGround && input[i].GetKeyUp() == res.Button_pressed {
-					state.Mans[i].Acceleration.Y = -100 * PixelSize
+					if res.Man(i) == res.Man_Normal {
+						state.Mans[i].Acceleration.Y = -100 * PixelSize
+					} else {
+						state.Mans[i].Acceleration.Y = -300 * PixelSize
+					}
 				} else {
 					state.Mans[i].Acceleration.Y = 0
 				}
@@ -191,16 +198,38 @@ func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Pack
 				state.Mans[i].Velocity.X -= state.Mans[i].Velocity.X / Friction
 				state.Mans[i].Velocity.Y -= state.Mans[i].Velocity.Y / Friction
 
-				state.Mans[i].Velocity.X += state.Mans[i].Acceleration.X / 100
-				state.Mans[i].Velocity.Y += state.Mans[i].Acceleration.Y / 100
+				state.Mans[i].Velocity.X += state.Mans[i].Acceleration.X
+				state.Mans[i].Velocity.Y += state.Mans[i].Acceleration.Y
 				if !onGround {
-					state.Mans[i].Velocity.Y += Gravity / 100
+					state.Mans[i].Velocity.Y += Gravity
 				}
 
-				state.Mans[i].Position.X += state.Mans[i].Velocity.X
-				state.Mans[i].Position.Y += state.Mans[i].Velocity.Y
+				if state.Mans[i].Velocity.X > TerminalVelocity {
+					state.Mans[i].Velocity.X = TerminalVelocity
+				}
+				if state.Mans[i].Velocity.X < -TerminalVelocity {
+					state.Mans[i].Velocity.X = -TerminalVelocity
+				}
+				if state.Mans[i].Velocity.Y > TerminalVelocity {
+					state.Mans[i].Velocity.Y = TerminalVelocity
+				}
+				if state.Mans[i].Velocity.Y < -TerminalVelocity {
+					state.Mans[i].Velocity.Y = -TerminalVelocity
+				}
 
-				if state.Mans[i].Position.X/PixelSize != prev.Mans[i].Position.X/PixelSize && state.Mans[i].Position.Y/PixelSize != prev.Mans[i].Position.Y/PixelSize {
+				if onGround && state.Mans[i].Velocity.X < MinimumVelocity && state.Mans[i].Velocity.X > -MinimumVelocity && state.Mans[i].Velocity.Y < MinimumVelocity && state.Mans[i].Velocity.Y > -MinimumVelocity && input[i].GetKeyUp() == res.Button_released && input[i].GetKeyDown() == res.Button_released && input[i].GetKeyLeft() == res.Button_released && input[i].GetKeyRight() == res.Button_released {
+					state.Mans[i].Velocity.X = 0
+					state.Mans[i].Velocity.Y = 0
+				}
+
+				// TODO: trace to prevent going through stuff
+				state.Mans[i].Position.X += state.Mans[i].Velocity.X / PixelSize
+				state.Mans[i].Position.Y += state.Mans[i].Velocity.Y / PixelSize
+				if state.Mans[i].Position.Y > 0 {
+					state.Mans[i].Position.Y = 0
+				}
+
+				if state.Mans[i].Position.X/PixelSize != prev.Mans[i].Position.X/PixelSize || state.Mans[i].Position.Y/PixelSize != prev.Mans[i].Position.Y/PixelSize {
 					go Send(broadcast, &res.Packet{
 						Type: res.Type_MoveMan.Enum(),
 						Man:  res.Man(i).Enum(),

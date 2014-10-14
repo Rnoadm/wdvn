@@ -11,9 +11,10 @@ import (
 
 const (
 	PixelSize        = 64
-	Gravity          = PixelSize * 16 // per second
-	TerminalVelocity = PixelSize * 10 // flat
-	Friction         = 100            // 1/Friction of the velocity is removed per tick
+	Gravity          = PixelSize * 9         // per tick
+	TerminalVelocity = PixelSize * 1000      // flat
+	MinimumVelocity  = PixelSize * PixelSize // unit stops moving if on ground
+	Friction         = 100                   // 1/Friction of the velocity is removed per tick
 )
 
 type State struct {
