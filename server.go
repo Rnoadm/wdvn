@@ -78,12 +78,14 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state S
 		case p := <-read:
 			switch p.GetType() {
 			case res.Type_MoveMan:
-				out <- &res.Packet{
+				go func(p *res.Packet) {
+					out <- p
+				}(&res.Packet{
 					Type: res.Type_MoveMan.Enum(),
 					Man:  man.Enum(),
 					X:    p.X,
 					Y:    p.Y,
-				}
+				})
 			}
 		}
 	}

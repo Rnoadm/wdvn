@@ -57,11 +57,13 @@ func GUI(in <-chan *res.Packet, out chan<- *res.Packet) {
 				x, y := int64(mouse.X-width/2), int64(mouse.Y-height/2)
 				x += state.Mans[state.Me].X
 				y += state.Mans[state.Me].Y
-				out <- &res.Packet{
+				go func(p *res.Packet) {
+					out <- p
+				}(&res.Packet{
 					Type: res.Type_MoveMan.Enum(),
 					X:    proto.Int64(x),
 					Y:    proto.Int64(y),
-				}
+				})
 			}
 
 		case <-repaintch:
