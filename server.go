@@ -3,6 +3,7 @@ package main
 import (
 	"code.google.com/p/goprotobuf/proto"
 	"github.com/Rnoadm/wdvn/res"
+	"image"
 	"net"
 	"time"
 )
@@ -33,7 +34,7 @@ func Listen(l net.Listener) {
 		ch := make(chan *res.Packet)
 		register <- ch
 
-		go Serve(conn, ch, broadcast, <-state, next_man, func(man res.Man) func() {
+		go Serve(conn, ch, broadcast, state, next_man, func(man res.Man) func() {
 			return func() {
 				disconnect <- man
 				go func() {
@@ -72,7 +73,7 @@ func Multicast(broadcast <-chan *res.Packet, register, unregister <-chan chan<- 
 	}
 }
 
-func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state State, man res.Man, disconnect func()) {
+func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech <-chan State, man res.Man, disconnect func()) {
 	defer disconnect()
 	defer conn.Close()
 
@@ -85,6 +86,7 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state S
 		Man:  man.Enum(),
 	}
 
+	state := <-statech
 	for i := range state.Mans {
 		write <- &res.Packet{
 			Type: res.Type_MoveMan.Enum(),
@@ -97,6 +99,10 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state S
 	ping := time.NewTicker(time.Second)
 	defer ping.Stop()
 	lastPing := time.Now()
+
+	tick := time.NewTicker(time.Second / 100)
+	defer tick.Stop()
+	var mouse *image.Point
 
 	for {
 		select {
@@ -114,6 +120,27 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state S
 					Man:  man.Enum(),
 					X:    p.X,
 					Y:    p.Y,
+				})
+
+			case res.Type_Mouse:
+				if p.X == nil {
+					mouse = nil
+				} else {
+					mouse = &image.Point{
+						int(p.GetX()),
+						int(p.GetY()),
+					}
+				}
+			}
+
+		case <-tick.C:
+			if mouse != nil {
+				state := <-statech
+				go Send(out, &res.Packet{
+					Type: res.Type_MoveMan.Enum(),
+					Man:  man.Enum(),
+					X:    proto.Int64(state.Mans[man].X + int64(mouse.X)),
+					Y:    proto.Int64(state.Mans[man].Y + int64(mouse.Y)),
 				})
 			}
 

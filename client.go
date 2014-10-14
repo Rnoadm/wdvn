@@ -9,7 +9,6 @@ import (
 	"image/color"
 	"image/draw"
 	"net"
-	"time"
 )
 
 type State struct {
@@ -37,26 +36,43 @@ func Client(conn net.Conn) {
 	w.Show()
 
 	var state State
-	var mouse *image.Point
+	mouse := make(chan *image.Point, 1)
+	defer close(mouse)
+	go func() {
+		var p *res.Packet
+		for {
+			out := write
+			if p == nil {
+				out = nil
+			}
 
-	tick := time.NewTicker(time.Second / 100)
-	defer tick.Stop()
+			select {
+			case m, ok := <-mouse:
+				if !ok {
+					return
+				}
+
+				if m == nil {
+					p = &res.Packet{
+						Type: res.Type_Mouse.Enum(),
+					}
+				} else {
+					width, height := w.Size()
+					p = &res.Packet{
+						Type: res.Type_Mouse.Enum(),
+						X:    proto.Int64(int64(m.X - width/2)),
+						Y:    proto.Int64(int64(m.Y - height/2)),
+					}
+				}
+
+			case out <- p:
+				p = nil
+			}
+		}
+	}()
 
 	for {
 		select {
-		case <-tick.C:
-			if mouse != nil {
-				width, height := w.Size()
-				x, y := int64(mouse.X-width/2), int64(mouse.Y-height/2)
-				x += state.Mans[state.Me].X
-				y += state.Mans[state.Me].Y
-				go Send(write, &res.Packet{
-					Type: res.Type_MoveMan.Enum(),
-					X:    proto.Int64(x),
-					Y:    proto.Int64(y),
-				})
-			}
-
 		case <-repaintch:
 			Render(w, state)
 
@@ -98,11 +114,11 @@ func Client(conn net.Conn) {
 			case wde.MouseEnteredEvent:
 				// TODO
 			case wde.MouseExitedEvent:
-				mouse = nil
+				mouse <- nil
 			case wde.MouseMovedEvent:
-				mouse = &e.Where
+				mouse <- &e.Where
 			case wde.MouseDraggedEvent:
-				mouse = &e.Where
+				mouse <- &e.Where
 			default:
 				panic(fmt.Errorf("unexpected event type %T in %#v", event, event))
 			}

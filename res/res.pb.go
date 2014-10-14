@@ -26,17 +26,20 @@ const (
 	Type_Ping      Type = 0
 	Type_SelectMan Type = 1
 	Type_MoveMan   Type = 2
+	Type_Mouse     Type = 3
 )
 
 var Type_name = map[int32]string{
 	0: "Ping",
 	1: "SelectMan",
 	2: "MoveMan",
+	3: "Mouse",
 }
 var Type_value = map[string]int32{
 	"Ping":      0,
 	"SelectMan": 1,
 	"MoveMan":   2,
+	"Mouse":     3,
 }
 
 func (x Type) Enum() *Type {

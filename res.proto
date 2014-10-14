@@ -2,6 +2,7 @@ enum Type {
 	Ping      = 0;
 	SelectMan = 1;
 	MoveMan   = 2;
+	Mouse = 3;
 }
 
 enum Man {
