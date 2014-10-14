@@ -23,17 +23,20 @@ var _ = math.Inf
 type Type int32
 
 const (
-	Type_SelectMan Type = 0
-	Type_MoveMan   Type = 1
+	Type_Ping      Type = 0
+	Type_SelectMan Type = 1
+	Type_MoveMan   Type = 2
 )
 
 var Type_name = map[int32]string{
-	0: "SelectMan",
-	1: "MoveMan",
+	0: "Ping",
+	1: "SelectMan",
+	2: "MoveMan",
 }
 var Type_value = map[string]int32{
-	"SelectMan": 0,
-	"MoveMan":   1,
+	"Ping":      0,
+	"SelectMan": 1,
+	"MoveMan":   2,
 }
 
 func (x Type) Enum() *Type {
@@ -111,7 +114,7 @@ func (m *Packet) GetType() Type {
 	if m != nil && m.Type != nil {
 		return *m.Type
 	}
-	return Type_SelectMan
+	return Type_Ping
 }
 
 func (m *Packet) GetMan() Man {

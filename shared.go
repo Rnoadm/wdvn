@@ -54,3 +54,7 @@ func Write(conn net.Conn, packets <-chan *res.Packet) {
 		}
 	}
 }
+
+func Send(ch chan<- *res.Packet, p *res.Packet) {
+	ch <- p
+}

@@ -57,9 +57,7 @@ func GUI(in <-chan *res.Packet, out chan<- *res.Packet) {
 				x, y := int64(mouse.X-width/2), int64(mouse.Y-height/2)
 				x += state.Mans[state.Me].X
 				y += state.Mans[state.Me].Y
-				go func(p *res.Packet) {
-					out <- p
-				}(&res.Packet{
+				go Send(out, &res.Packet{
 					Type: res.Type_MoveMan.Enum(),
 					X:    proto.Int64(x),
 					Y:    proto.Int64(y),
@@ -71,14 +69,18 @@ func GUI(in <-chan *res.Packet, out chan<- *res.Packet) {
 
 		case p := <-in:
 			switch p.GetType() {
+			case res.Type_Ping:
+				go Send(out, p)
+
 			case res.Type_SelectMan:
 				state.Me = p.GetMan()
+				Repaint()
 
 			case res.Type_MoveMan:
 				state.Mans[p.GetMan()].X = p.GetX()
 				state.Mans[p.GetMan()].Y = p.GetY()
+				Repaint()
 			}
-			Repaint()
 
 		case event := <-w.EventChan():
 			switch e := event.(type) {
@@ -129,11 +131,11 @@ func init() {
 func Render(w wde.Window, state State) {
 	img := image.NewRGBA(w.Screen().Bounds())
 
-	offX := int64(img.Rect.Dx()/2-sprites[0].Rect.Dx()/2) - state.Mans[state.Me].X/256
-	offY := int64(img.Rect.Dy()/2-sprites[0].Rect.Dy()/2) - state.Mans[state.Me].Y/256
+	offX := int64(img.Rect.Dx()/2-sprites[0].Rect.Dx()/2) - state.Mans[state.Me].X/64
+	offY := int64(img.Rect.Dy()/2-sprites[0].Rect.Dy()/2) - state.Mans[state.Me].Y/64
 
 	for i := res.Man(0); i < res.Man_count; i++ {
-		draw.Draw(img, sprites[i].Rect.Add(image.Pt(int(state.Mans[i].X/256+offX), int(state.Mans[i].Y/256+offY))), sprites[i], image.ZP, draw.Over)
+		draw.Draw(img, sprites[i].Rect.Add(image.Pt(int(state.Mans[i].X/64+offX), int(state.Mans[i].Y/64+offY))), sprites[i], image.ZP, draw.Over)
 	}
 
 	w.Screen().CopyRGBA(img, img.Rect)

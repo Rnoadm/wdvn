@@ -4,13 +4,14 @@ import (
 	"code.google.com/p/goprotobuf/proto"
 	"github.com/Rnoadm/wdvn/res"
 	"net"
+	"time"
 )
 
 func Listen(l net.Listener) {
 	defer l.Close()
 
-	broadcast, register := make(chan *res.Packet), make(chan chan<- *res.Packet)
-	go Multicast(broadcast, register)
+	broadcast, register, unregister := make(chan *res.Packet), make(chan chan<- *res.Packet), make(chan chan<- *res.Packet)
+	go Multicast(broadcast, register, unregister)
 
 	ch := make(chan *res.Packet)
 	register <- ch
@@ -18,6 +19,8 @@ func Listen(l net.Listener) {
 	go Manager(ch, state)
 
 	var next_man = res.Man(0)
+
+	disconnect := make(chan res.Man)
 
 	for next_man < res.Man_count {
 		conn, err := l.Accept()
@@ -28,18 +31,38 @@ func Listen(l net.Listener) {
 		ch := make(chan *res.Packet)
 		register <- ch
 
-		go Serve(conn, ch, broadcast, <-state, next_man)
+		go Serve(conn, ch, broadcast, <-state, next_man, disconnect)
 		next_man++
+	}
+
+	for next_man := range disconnect {
+		conn, err := l.Accept()
+		if err != nil {
+			panic(err)
+		}
+
+		ch := make(chan *res.Packet)
+		register <- ch
+
+		go Serve(conn, ch, broadcast, <-state, next_man, disconnect)
 	}
 }
 
-func Multicast(broadcast <-chan *res.Packet, register <-chan chan<- *res.Packet) {
+func Multicast(broadcast <-chan *res.Packet, register, unregister <-chan chan<- *res.Packet) {
 	var writers []chan<- *res.Packet
 
 	for {
 		select {
 		case ch := <-register:
 			writers = append(writers, ch)
+
+		case ch := <-unregister:
+			for i, ch2 := range writers {
+				if ch == ch2 {
+					writers = append(writers[:i], writers[i+1:]...)
+					break
+				}
+			}
 
 		case packet := <-broadcast:
 			for _, ch := range writers {
@@ -49,7 +72,8 @@ func Multicast(broadcast <-chan *res.Packet, register <-chan chan<- *res.Packet)
 	}
 }
 
-func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state State, man res.Man) {
+func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state State, man res.Man, disconnect chan<- res.Man) {
+	defer func() { disconnect <- man }()
 	defer conn.Close()
 
 	read, write := make(chan *res.Packet), make(chan *res.Packet)
@@ -70,6 +94,10 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state S
 		}
 	}
 
+	ping := time.NewTicker(time.Second)
+	defer ping.Stop()
+	lastPing := time.Now()
+
 	for {
 		select {
 		case p := <-in:
@@ -77,15 +105,25 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state S
 
 		case p := <-read:
 			switch p.GetType() {
+			case res.Type_Ping:
+				lastPing = time.Now()
+
 			case res.Type_MoveMan:
-				go func(p *res.Packet) {
-					out <- p
-				}(&res.Packet{
+				go Send(out, &res.Packet{
 					Type: res.Type_MoveMan.Enum(),
 					Man:  man.Enum(),
 					X:    p.X,
 					Y:    p.Y,
 				})
+			}
+
+		case <-ping.C:
+			go Send(out, &res.Packet{
+				Type: res.Type_Ping.Enum(),
+			})
+
+			if time.Since(lastPing) > time.Second*5 {
+				return
 			}
 		}
 	}

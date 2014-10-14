@@ -1,6 +1,7 @@
 enum Type {
-	SelectMan = 0;
-	MoveMan   = 1;
+	Ping      = 0;
+	SelectMan = 1;
+	MoveMan   = 2;
 }
 
 enum Man {
