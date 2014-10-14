@@ -11,13 +11,6 @@ import (
 	"net"
 )
 
-type State struct {
-	Me   res.Man
-	Mans [res.Man_count]struct {
-		X, Y int64
-	}
-}
-
 func Client(conn net.Conn) {
 	defer conn.Close()
 
@@ -35,11 +28,22 @@ func Client(conn net.Conn) {
 
 	w.Show()
 
+	var me res.Man
 	var state State
-	mouse := make(chan *image.Point, 1)
-	defer close(mouse)
+	input := make(chan *res.Packet, 1)
+	defer close(input)
 	go func() {
+		releaseAll := &res.Packet{
+			Mouse1:   res.Button_released.Enum(),
+			Mouse2:   res.Button_released.Enum(),
+			KeyUp:    res.Button_released.Enum(),
+			KeyDown:  res.Button_released.Enum(),
+			KeyLeft:  res.Button_released.Enum(),
+			KeyRight: res.Button_released.Enum(),
+		}
+
 		var p *res.Packet
+
 		for {
 			out := write
 			if p == nil {
@@ -47,22 +51,20 @@ func Client(conn net.Conn) {
 			}
 
 			select {
-			case m, ok := <-mouse:
+			case v, ok := <-input:
 				if !ok {
 					return
 				}
 
-				if m == nil {
+				if p == nil {
 					p = &res.Packet{
-						Type: res.Type_Mouse.Enum(),
+						Type: res.Type_Input.Enum(),
 					}
+				}
+				if v == nil {
+					proto.Merge(p, releaseAll)
 				} else {
-					width, height := w.Size()
-					p = &res.Packet{
-						Type: res.Type_Mouse.Enum(),
-						X:    proto.Int64(int64(m.X - width/2)),
-						Y:    proto.Int64(int64(m.Y - height/2)),
-					}
+					proto.Merge(p, v)
 				}
 
 			case out <- p:
@@ -74,7 +76,7 @@ func Client(conn net.Conn) {
 	for {
 		select {
 		case <-repaintch:
-			Render(w, state)
+			Render(w, me, state)
 
 		case p, ok := <-read:
 			if !ok {
@@ -86,12 +88,12 @@ func Client(conn net.Conn) {
 				go Send(write, p)
 
 			case res.Type_SelectMan:
-				state.Me = p.GetMan()
+				me = p.GetMan()
 				Repaint()
 
 			case res.Type_MoveMan:
-				state.Mans[p.GetMan()].X = p.GetX()
-				state.Mans[p.GetMan()].Y = p.GetY()
+				state.Mans[p.GetMan()].Position.X = p.GetX()
+				state.Mans[p.GetMan()].Position.Y = p.GetY()
 				Repaint()
 			}
 
@@ -102,23 +104,87 @@ func Client(conn net.Conn) {
 			case wde.ResizeEvent:
 				Repaint()
 			case wde.KeyDownEvent:
+				switch e.Key {
+				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow:
+					input <- &res.Packet{
+						KeyUp: res.Button_pressed.Enum(),
+					}
+				case wde.KeyS, wde.KeyPadDown, wde.KeyDownArrow:
+					input <- &res.Packet{
+						KeyDown: res.Button_pressed.Enum(),
+					}
+				case wde.KeyA, wde.KeyPadLeft, wde.KeyLeftArrow:
+					input <- &res.Packet{
+						KeyLeft: res.Button_pressed.Enum(),
+					}
+				case wde.KeyD, wde.KeyPadRight, wde.KeyRightArrow:
+					input <- &res.Packet{
+						KeyRight: res.Button_pressed.Enum(),
+					}
+				}
 				// TODO
 			case wde.KeyTypedEvent:
 				// TODO
 			case wde.KeyUpEvent:
+				switch e.Key {
+				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow:
+					input <- &res.Packet{
+						KeyUp: res.Button_released.Enum(),
+					}
+				case wde.KeyS, wde.KeyPadDown, wde.KeyDownArrow:
+					input <- &res.Packet{
+						KeyDown: res.Button_released.Enum(),
+					}
+				case wde.KeyA, wde.KeyPadLeft, wde.KeyLeftArrow:
+					input <- &res.Packet{
+						KeyLeft: res.Button_released.Enum(),
+					}
+				case wde.KeyD, wde.KeyPadRight, wde.KeyRightArrow:
+					input <- &res.Packet{
+						KeyRight: res.Button_released.Enum(),
+					}
+				}
 				// TODO
 			case wde.MouseDownEvent:
+				switch e.Which {
+				case wde.LeftButton:
+					input <- &res.Packet{
+						Mouse1: res.Button_pressed.Enum(),
+					}
+				case wde.RightButton:
+					input <- &res.Packet{
+						Mouse2: res.Button_pressed.Enum(),
+					}
+				}
 				// TODO
 			case wde.MouseUpEvent:
+				switch e.Which {
+				case wde.LeftButton:
+					input <- &res.Packet{
+						Mouse1: res.Button_released.Enum(),
+					}
+				case wde.RightButton:
+					input <- &res.Packet{
+						Mouse2: res.Button_released.Enum(),
+					}
+				}
 				// TODO
 			case wde.MouseEnteredEvent:
 				// TODO
 			case wde.MouseExitedEvent:
-				mouse <- nil
+				input <- nil
 			case wde.MouseMovedEvent:
-				mouse <- &e.Where
+				width, height := w.Size()
+				input <- &res.Packet{
+					X: proto.Int64(int64(e.Where.X - width/2)),
+					Y: proto.Int64(int64(e.Where.Y - height/2)),
+				}
 			case wde.MouseDraggedEvent:
-				mouse <- &e.Where
+				width, height := w.Size()
+				input <- &res.Packet{
+					X: proto.Int64(int64(e.Where.X - width/2)),
+					Y: proto.Int64(int64(e.Where.Y - height/2)),
+				}
 			default:
 				panic(fmt.Errorf("unexpected event type %T in %#v", event, event))
 			}
@@ -141,14 +207,17 @@ func init() {
 	}
 }
 
-func Render(w wde.Window, state State) {
+func Render(w wde.Window, me res.Man, state State) {
 	img := image.NewRGBA(w.Screen().Bounds())
 
-	offX := int64(img.Rect.Dx()/2-sprites[0].Rect.Dx()/2) - state.Mans[state.Me].X/64
-	offY := int64(img.Rect.Dy()/2-sprites[0].Rect.Dy()/2) - state.Mans[state.Me].Y/64
+	offX := int64(img.Rect.Dx()/2-sprites[me].Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
+	offY := int64(img.Rect.Dy()/2-sprites[me].Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
 
-	for i := res.Man(0); i < res.Man_count; i++ {
-		draw.Draw(img, sprites[i].Rect.Add(image.Pt(int(state.Mans[i].X/64+offX), int(state.Mans[i].Y/64+offY))), sprites[i], image.ZP, draw.Over)
+	for i := range state.Mans {
+		draw.Draw(img, sprites[i].Rect.Add(image.Point{
+			X: int(state.Mans[i].Position.X/PixelSize + offX),
+			Y: int(state.Mans[i].Position.Y/PixelSize + offY),
+		}), sprites[i], image.ZP, draw.Over)
 	}
 
 	w.Screen().CopyRGBA(img, img.Rect)

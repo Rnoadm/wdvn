@@ -2,7 +2,7 @@ enum Type {
 	Ping      = 0;
 	SelectMan = 1;
 	MoveMan   = 2;
-	Mouse = 3;
+	Input     = 3;
 }
 
 enum Man {
@@ -13,9 +13,21 @@ enum Man {
 	count   = 4;
 }
 
+enum Button {
+	released = 0;
+	pressed  = 1;
+}
+
 message Packet {
 	required Type type = 1; 
 	optional Man man   = 2;
 	optional sint64 x  = 3;
 	optional sint64 y  = 4;
+
+	optional Button mouse1    = 16;
+	optional Button mouse2    = 17;
+	optional Button key_up    = 18;
+	optional Button key_down  = 19;
+	optional Button key_left  = 20;
+	optional Button key_right = 21;
 }

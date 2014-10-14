@@ -3,7 +3,6 @@ package main
 import (
 	"code.google.com/p/goprotobuf/proto"
 	"github.com/Rnoadm/wdvn/res"
-	"image"
 	"net"
 	"time"
 )
@@ -17,7 +16,7 @@ func Listen(l net.Listener) {
 	ch := make(chan *res.Packet)
 	register <- ch
 	state := make(chan State)
-	go Manager(ch, state)
+	go Manager(ch, state, broadcast)
 
 	disconnect := make(chan res.Man, res.Man_count)
 
@@ -91,18 +90,14 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 		write <- &res.Packet{
 			Type: res.Type_MoveMan.Enum(),
 			Man:  res.Man(i).Enum(),
-			X:    proto.Int64(state.Mans[i].X),
-			Y:    proto.Int64(state.Mans[i].Y),
+			X:    proto.Int64(state.Mans[i].Position.X),
+			Y:    proto.Int64(state.Mans[i].Position.Y),
 		}
 	}
 
 	ping := time.NewTicker(time.Second)
 	defer ping.Stop()
 	lastPing := time.Now()
-
-	tick := time.NewTicker(time.Second / 100)
-	defer tick.Stop()
-	var mouse *image.Point
 
 	for {
 		select {
@@ -122,26 +117,9 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 					Y:    p.Y,
 				})
 
-			case res.Type_Mouse:
-				if p.X == nil {
-					mouse = nil
-				} else {
-					mouse = &image.Point{
-						int(p.GetX()),
-						int(p.GetY()),
-					}
-				}
-			}
-
-		case <-tick.C:
-			if mouse != nil {
-				state := <-statech
-				go Send(out, &res.Packet{
-					Type: res.Type_MoveMan.Enum(),
-					Man:  man.Enum(),
-					X:    proto.Int64(state.Mans[man].X + int64(mouse.X)),
-					Y:    proto.Int64(state.Mans[man].Y + int64(mouse.Y)),
-				})
+			case res.Type_Input:
+				p.Man = man.Enum()
+				go Send(out, p)
 			}
 
 		case <-ping.C:
@@ -156,19 +134,81 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 	}
 }
 
-func Manager(in <-chan *res.Packet, out chan<- State) {
+func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Packet) {
 	var state State
+	var input [res.Man_count]res.Packet
+
+	tick := time.Tick(time.Second / 100)
 
 	for {
 		select {
 		case p := <-in:
 			switch p.GetType() {
-			case res.Type_MoveMan:
-				state.Mans[p.GetMan()].X = p.GetX()
-				state.Mans[p.GetMan()].Y = p.GetY()
+			//case res.Type_MoveMan:
+			//	state.Mans[p.GetMan()].Position.X = p.GetX()
+			//	state.Mans[p.GetMan()].Position.Y = p.GetY()
+
+			case res.Type_Input:
+				proto.Merge(&input[p.GetMan()], p)
 			}
 
 		case out <- state:
+
+		case <-tick:
+			prev := state
+
+			for i := range state.Mans {
+				// TODO: check for ground
+				onGround := false
+
+				if onGround {
+					// TODO: deal physics damage based on velocity
+					state.Mans[i].Velocity.Y = 0
+				}
+
+				if input[i].GetKeyLeft() == res.Button_pressed {
+					if input[i].GetKeyRight() == res.Button_pressed {
+						state.Mans[i].Acceleration.X = 0
+					} else {
+						state.Mans[i].Acceleration.X = -PixelSize
+					}
+				} else {
+					if input[i].GetKeyRight() == res.Button_pressed {
+						state.Mans[i].Acceleration.X = PixelSize
+					} else {
+						state.Mans[i].Acceleration.X = 0
+					}
+				}
+				if !onGround && res.Man(i) == res.Man_Normal {
+					state.Mans[i].Acceleration.X = 0
+				}
+				if onGround && input[i].GetKeyUp() == res.Button_pressed {
+					state.Mans[i].Acceleration.Y = -100 * PixelSize
+				} else {
+					state.Mans[i].Acceleration.Y = 0
+				}
+
+				state.Mans[i].Velocity.X -= state.Mans[i].Velocity.X / Friction
+				state.Mans[i].Velocity.Y -= state.Mans[i].Velocity.Y / Friction
+
+				state.Mans[i].Velocity.X += state.Mans[i].Acceleration.X / 100
+				state.Mans[i].Velocity.Y += state.Mans[i].Acceleration.Y / 100
+				if !onGround {
+					state.Mans[i].Velocity.Y += Gravity / 100
+				}
+
+				state.Mans[i].Position.X += state.Mans[i].Velocity.X
+				state.Mans[i].Position.Y += state.Mans[i].Velocity.Y
+
+				if state.Mans[i].Position.X/PixelSize != prev.Mans[i].Position.X/PixelSize && state.Mans[i].Position.Y/PixelSize != prev.Mans[i].Position.Y/PixelSize {
+					go Send(broadcast, &res.Packet{
+						Type: res.Type_MoveMan.Enum(),
+						Man:  res.Man(i).Enum(),
+						X:    proto.Int64(state.Mans[i].Position.X),
+						Y:    proto.Int64(state.Mans[i].Position.Y),
+					})
+				}
+			}
 		}
 	}
 }

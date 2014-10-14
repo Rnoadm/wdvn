@@ -9,6 +9,21 @@ import (
 	"net"
 )
 
+const (
+	PixelSize        = 64
+	Gravity          = PixelSize * 16 // per second
+	TerminalVelocity = PixelSize * 10 // flat
+	Friction         = 100            // 1/Friction of the velocity is removed per tick
+)
+
+type State struct {
+	Mans [res.Man_count]struct {
+		Position     struct{ X, Y int64 }
+		Velocity     struct{ X, Y int64 }
+		Acceleration struct{ X, Y int64 }
+	}
+}
+
 func Read(conn net.Conn, packets chan<- *res.Packet) {
 	defer close(packets)
 

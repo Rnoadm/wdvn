@@ -26,20 +26,20 @@ const (
 	Type_Ping      Type = 0
 	Type_SelectMan Type = 1
 	Type_MoveMan   Type = 2
-	Type_Mouse     Type = 3
+	Type_Input     Type = 3
 )
 
 var Type_name = map[int32]string{
 	0: "Ping",
 	1: "SelectMan",
 	2: "MoveMan",
-	3: "Mouse",
+	3: "Input",
 }
 var Type_value = map[string]int32{
 	"Ping":      0,
 	"SelectMan": 1,
 	"MoveMan":   2,
-	"Mouse":     3,
+	"Input":     3,
 }
 
 func (x Type) Enum() *Type {
@@ -101,12 +101,51 @@ func (x *Man) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type Button int32
+
+const (
+	Button_released Button = 0
+	Button_pressed  Button = 1
+)
+
+var Button_name = map[int32]string{
+	0: "released",
+	1: "pressed",
+}
+var Button_value = map[string]int32{
+	"released": 0,
+	"pressed":  1,
+}
+
+func (x Button) Enum() *Button {
+	p := new(Button)
+	*p = x
+	return p
+}
+func (x Button) String() string {
+	return proto.EnumName(Button_name, int32(x))
+}
+func (x *Button) UnmarshalJSON(data []byte) error {
+	value, err := proto.UnmarshalJSONEnum(Button_value, data, "Button")
+	if err != nil {
+		return err
+	}
+	*x = Button(value)
+	return nil
+}
+
 type Packet struct {
-	Type             *Type  `protobuf:"varint,1,req,name=type,enum=Type" json:"type,omitempty"`
-	Man              *Man   `protobuf:"varint,2,opt,name=man,enum=Man" json:"man,omitempty"`
-	X                *int64 `protobuf:"zigzag64,3,opt,name=x" json:"x,omitempty"`
-	Y                *int64 `protobuf:"zigzag64,4,opt,name=y" json:"y,omitempty"`
-	XXX_unrecognized []byte `json:"-"`
+	Type             *Type   `protobuf:"varint,1,req,name=type,enum=Type" json:"type,omitempty"`
+	Man              *Man    `protobuf:"varint,2,opt,name=man,enum=Man" json:"man,omitempty"`
+	X                *int64  `protobuf:"zigzag64,3,opt,name=x" json:"x,omitempty"`
+	Y                *int64  `protobuf:"zigzag64,4,opt,name=y" json:"y,omitempty"`
+	Mouse1           *Button `protobuf:"varint,16,opt,name=mouse1,enum=Button" json:"mouse1,omitempty"`
+	Mouse2           *Button `protobuf:"varint,17,opt,name=mouse2,enum=Button" json:"mouse2,omitempty"`
+	KeyUp            *Button `protobuf:"varint,18,opt,name=key_up,enum=Button" json:"key_up,omitempty"`
+	KeyDown          *Button `protobuf:"varint,19,opt,name=key_down,enum=Button" json:"key_down,omitempty"`
+	KeyLeft          *Button `protobuf:"varint,20,opt,name=key_left,enum=Button" json:"key_left,omitempty"`
+	KeyRight         *Button `protobuf:"varint,21,opt,name=key_right,enum=Button" json:"key_right,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
 }
 
 func (m *Packet) Reset()         { *m = Packet{} }
@@ -141,7 +180,50 @@ func (m *Packet) GetY() int64 {
 	return 0
 }
 
+func (m *Packet) GetMouse1() Button {
+	if m != nil && m.Mouse1 != nil {
+		return *m.Mouse1
+	}
+	return Button_released
+}
+
+func (m *Packet) GetMouse2() Button {
+	if m != nil && m.Mouse2 != nil {
+		return *m.Mouse2
+	}
+	return Button_released
+}
+
+func (m *Packet) GetKeyUp() Button {
+	if m != nil && m.KeyUp != nil {
+		return *m.KeyUp
+	}
+	return Button_released
+}
+
+func (m *Packet) GetKeyDown() Button {
+	if m != nil && m.KeyDown != nil {
+		return *m.KeyDown
+	}
+	return Button_released
+}
+
+func (m *Packet) GetKeyLeft() Button {
+	if m != nil && m.KeyLeft != nil {
+		return *m.KeyLeft
+	}
+	return Button_released
+}
+
+func (m *Packet) GetKeyRight() Button {
+	if m != nil && m.KeyRight != nil {
+		return *m.KeyRight
+	}
+	return Button_released
+}
+
 func init() {
 	proto.RegisterEnum("Type", Type_name, Type_value)
 	proto.RegisterEnum("Man", Man_name, Man_value)
+	proto.RegisterEnum("Button", Button_name, Button_value)
 }
