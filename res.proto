@@ -1,0 +1,19 @@
+enum Type {
+	SelectMan = 0;
+	MoveMan   = 1;
+}
+
+enum Man {
+	Whip    = 0;
+	Density = 1;
+	Vacuum  = 2;
+	Normal  = 3;
+	count   = 4;
+}
+
+message Packet {
+	required Type type = 1; 
+	optional Man man   = 2;
+	optional sint64 x  = 3;
+	optional sint64 y  = 4;
+}
