@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"code.google.com/p/goprotobuf/proto"
 	"fmt"
 	"github.com/Rnoadm/wdvn/res"
@@ -8,6 +9,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"image/png"
 	"net"
 )
 
@@ -195,15 +197,18 @@ func Client(conn net.Conn) {
 var sprites [res.Man_count]*image.RGBA
 
 func init() {
-	r := image.Rect(0, 0, 16, 16)
-	for i, c := range []color.RGBA{
-		res.Man_Whip:    {255, 0, 0, 255},
-		res.Man_Density: {255, 255, 0, 255},
-		res.Man_Vacuum:  {0, 255, 0, 255},
-		res.Man_Normal:  {0, 0, 255, 255},
-	} {
-		sprites[i] = image.NewRGBA(r)
-		draw.Draw(sprites[i], r, image.NewUniform(c), image.ZP, draw.Src)
+	src, err := png.Decode(bytes.NewReader(res.MansPng))
+	if err != nil {
+		panic(err)
+	}
+	dst := image.NewRGBA(src.Bounds())
+	draw.Draw(dst, dst.Rect, src, dst.Rect.Min, draw.Src)
+
+	y := dst.Rect.Dy() / len(sprites)
+	r := image.Rect(dst.Rect.Min.X, dst.Rect.Min.Y, dst.Rect.Max.X, dst.Rect.Min.Y+y)
+
+	for i := range sprites {
+		sprites[i] = dst.SubImage(r.Add(image.Pt(0, y*i))).(*image.RGBA)
 	}
 }
 
@@ -220,10 +225,10 @@ func Render(w wde.Window, me res.Man, state State) {
 	draw.Draw(img, image.Rect(img.Rect.Min.X, int(offY), img.Rect.Max.X, img.Rect.Max.Y), ground, image.ZP, draw.Src)
 
 	for i := range state.Mans {
-		draw.Draw(img, sprites[i].Rect.Add(image.Point{
+		draw.Draw(img, sprites[i].Rect.Sub(sprites[i].Rect.Min).Add(image.Point{
 			X: int(state.Mans[i].Position.X/PixelSize + offX),
 			Y: int(state.Mans[i].Position.Y/PixelSize+offY) - sprites[i].Rect.Dy(),
-		}), sprites[i], image.ZP, draw.Over)
+		}), sprites[i], sprites[i].Rect.Min, draw.Over)
 	}
 
 	w.Screen().CopyRGBA(img, img.Rect)
