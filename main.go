@@ -10,6 +10,7 @@ import (
 var (
 	flagHost    = flag.String("host", "", "host this game, like \":7777\"")
 	flagAddress = flag.String("addr", "", "address to connect to, like \"192.168.1.100:7777\"")
+	flagPredict = flag.Bool("predict", false, "use client-side prediction")
 )
 
 func main() {

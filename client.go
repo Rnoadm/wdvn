@@ -11,6 +11,7 @@ import (
 	"image/draw"
 	"image/png"
 	"net"
+	"time"
 )
 
 func Client(conn net.Conn) {
@@ -30,20 +31,31 @@ func Client(conn net.Conn) {
 
 	w.Show()
 
-	var me res.Man
-	var state State
-	input := make(chan *res.Packet, 1)
-	defer close(input)
-	go func() {
-		releaseAll := &res.Packet{
-			Mouse1:   res.Button_released.Enum(),
-			Mouse2:   res.Button_released.Enum(),
-			KeyUp:    res.Button_released.Enum(),
-			KeyDown:  res.Button_released.Enum(),
-			KeyLeft:  res.Button_released.Enum(),
-			KeyRight: res.Button_released.Enum(),
-		}
+	var (
+		me      res.Man
+		state   State
+		input   [res.Man_count]res.Packet
+		inputch = make(chan *res.Packet, 1)
+	)
+	defer close(inputch)
+	releaseAll := &res.Packet{
+		Mouse1:   res.Button_released.Enum(),
+		Mouse2:   res.Button_released.Enum(),
+		KeyUp:    res.Button_released.Enum(),
+		KeyDown:  res.Button_released.Enum(),
+		KeyLeft:  res.Button_released.Enum(),
+		KeyRight: res.Button_released.Enum(),
+	}
 
+	sendInput := func(p *res.Packet) {
+		if p == nil {
+			proto.Merge(&input[me], releaseAll)
+		} else {
+			proto.Merge(&input[me], p)
+		}
+		inputch <- p
+	}
+	go func() {
 		var p *res.Packet
 
 		for {
@@ -53,7 +65,7 @@ func Client(conn net.Conn) {
 			}
 
 			select {
-			case v, ok := <-input:
+			case v, ok := <-inputch:
 				if !ok {
 					return
 				}
@@ -74,6 +86,11 @@ func Client(conn net.Conn) {
 			}
 		}
 	}()
+
+	var tick <-chan time.Time
+	if *flagPredict {
+		tick = time.Tick(time.Second / TicksPerSecond)
+	}
 
 	for {
 		select {
@@ -97,6 +114,9 @@ func Client(conn net.Conn) {
 				state.Mans[p.GetMan()].Position.X = p.GetX()
 				state.Mans[p.GetMan()].Position.Y = p.GetY()
 				Repaint()
+
+			case res.Type_Input:
+				proto.Merge(&input[p.GetMan()], p)
 			}
 
 		case event := <-w.EventChan():
@@ -108,88 +128,88 @@ func Client(conn net.Conn) {
 			case wde.KeyDownEvent:
 				switch e.Key {
 				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow:
-					input <- &res.Packet{
+					sendInput(&res.Packet{
 						KeyUp: res.Button_pressed.Enum(),
-					}
+					})
 				case wde.KeyS, wde.KeyPadDown, wde.KeyDownArrow:
-					input <- &res.Packet{
+					sendInput(&res.Packet{
 						KeyDown: res.Button_pressed.Enum(),
-					}
+					})
 				case wde.KeyA, wde.KeyPadLeft, wde.KeyLeftArrow:
-					input <- &res.Packet{
+					sendInput(&res.Packet{
 						KeyLeft: res.Button_pressed.Enum(),
-					}
+					})
 				case wde.KeyD, wde.KeyPadRight, wde.KeyRightArrow:
-					input <- &res.Packet{
+					sendInput(&res.Packet{
 						KeyRight: res.Button_pressed.Enum(),
-					}
+					})
 				}
-				// TODO
 			case wde.KeyTypedEvent:
 				// TODO
 			case wde.KeyUpEvent:
 				switch e.Key {
 				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow:
-					input <- &res.Packet{
+					sendInput(&res.Packet{
 						KeyUp: res.Button_released.Enum(),
-					}
+					})
 				case wde.KeyS, wde.KeyPadDown, wde.KeyDownArrow:
-					input <- &res.Packet{
+					sendInput(&res.Packet{
 						KeyDown: res.Button_released.Enum(),
-					}
+					})
 				case wde.KeyA, wde.KeyPadLeft, wde.KeyLeftArrow:
-					input <- &res.Packet{
+					sendInput(&res.Packet{
 						KeyLeft: res.Button_released.Enum(),
-					}
+					})
 				case wde.KeyD, wde.KeyPadRight, wde.KeyRightArrow:
-					input <- &res.Packet{
+					sendInput(&res.Packet{
 						KeyRight: res.Button_released.Enum(),
-					}
+					})
 				}
-				// TODO
 			case wde.MouseDownEvent:
 				switch e.Which {
 				case wde.LeftButton:
-					input <- &res.Packet{
+					sendInput(&res.Packet{
 						Mouse1: res.Button_pressed.Enum(),
-					}
+					})
 				case wde.RightButton:
-					input <- &res.Packet{
+					sendInput(&res.Packet{
 						Mouse2: res.Button_pressed.Enum(),
-					}
+					})
 				}
-				// TODO
 			case wde.MouseUpEvent:
 				switch e.Which {
 				case wde.LeftButton:
-					input <- &res.Packet{
+					sendInput(&res.Packet{
 						Mouse1: res.Button_released.Enum(),
-					}
+					})
 				case wde.RightButton:
-					input <- &res.Packet{
+					sendInput(&res.Packet{
 						Mouse2: res.Button_released.Enum(),
-					}
+					})
 				}
-				// TODO
 			case wde.MouseEnteredEvent:
 				// TODO
 			case wde.MouseExitedEvent:
-				input <- nil
+				sendInput(nil)
 			case wde.MouseMovedEvent:
 				width, height := w.Size()
-				input <- &res.Packet{
+				sendInput(&res.Packet{
 					X: proto.Int64(int64(e.Where.X - width/2)),
 					Y: proto.Int64(int64(e.Where.Y - height/2)),
-				}
+				})
 			case wde.MouseDraggedEvent:
 				width, height := w.Size()
-				input <- &res.Packet{
+				sendInput(&res.Packet{
 					X: proto.Int64(int64(e.Where.X - width/2)),
 					Y: proto.Int64(int64(e.Where.Y - height/2)),
-				}
+				})
 			default:
 				panic(fmt.Errorf("unexpected event type %T in %#v", event, event))
 			}
+
+		case <-tick:
+			state.Update(&input)
+			Repaint()
 		}
 	}
 }
