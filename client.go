@@ -249,6 +249,10 @@ func Render(w wde.Window, me res.Man, state State) {
 			X: int(state.Mans[i].Position.X/PixelSize + offX),
 			Y: int(state.Mans[i].Position.Y/PixelSize+offY) - sprites[i].Rect.Dy(),
 		}), sprites[i], sprites[i].Rect.Min, draw.Over)
+		draw.Draw(img, image.Rect(0, 0, 1, 1).Add(image.Point{
+			X: int(state.Mans[i].Target.X/PixelSize+offX) + sprites[i].Rect.Dx()/2,
+			Y: int(state.Mans[i].Target.Y/PixelSize+offY) - sprites[i].Rect.Dy()/2,
+		}), sprites[i], sprites[i].Rect.Min, draw.Over)
 	}
 
 	w.Screen().CopyRGBA(img, img.Rect)

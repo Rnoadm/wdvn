@@ -64,8 +64,8 @@ func (u *Unit) UpdateMan(state *State, input *res.Packet) {
 
 	u.UpdatePhysics(state)
 
-	u.Target.X = u.Position.X + input.GetX()
-	u.Target.Y = u.Position.Y + input.GetY()
+	u.Target.X = u.Position.X + input.GetX()*PixelSize
+	u.Target.Y = u.Position.Y + input.GetY()*PixelSize
 }
 
 func (u *Unit) UpdatePhysics(state *State) {
