@@ -6,6 +6,7 @@ import (
 	"github.com/Rnoadm/wdvn/res"
 	"io"
 	"log"
+	"math"
 	"net"
 )
 
@@ -16,7 +17,10 @@ const (
 	MinimumVelocity  = PixelSize * PixelSize // unit stops moving if on ground
 	Friction         = 100                   // 1/Friction of the velocity is removed per tick
 	TicksPerSecond   = 100
+	WhipTime         = 0.5 * TicksPerSecond
 )
+
+var DefaultSize = Coord{16 * PixelSize, 16 * PixelSize}
 
 type Coord struct{ X, Y int64 }
 
@@ -25,6 +29,7 @@ type Unit struct {
 	Velocity     Coord
 	Acceleration Coord
 	Target       Coord
+	Size         Coord
 }
 
 func (u *Unit) OnGround(state *State) bool {
@@ -119,13 +124,141 @@ func (u *Unit) UpdatePhysics(state *State) {
 }
 
 type State struct {
-	Mans [res.Man_count]Unit
+	Tick      uint64
+	Mans      [res.Man_count]Unit
+	WhipStart uint64
+	WhipStop  uint64
+	WhipPull  bool
 }
 
 func (state *State) Update(input *[res.Man_count]res.Packet) {
+	state.Tick++
+
 	for i := range state.Mans {
 		state.Mans[i].UpdateMan(state, &(*input)[i])
 	}
+
+	if state.WhipStop != 0 && state.WhipStop-state.WhipStart < state.Tick-state.WhipStop {
+		state.WhipStart, state.WhipStop = 0, 0
+	}
+	m1, m2 := (*input)[res.Man_Whip].GetMouse1() == res.Button_pressed, (*input)[res.Man_Whip].GetMouse2() == res.Button_pressed
+	if m1 || m2 {
+		state.WhipPull = m2
+		if state.WhipStart == 0 {
+			state.WhipStart = state.Tick
+		}
+	} else if state.WhipStart != 0 {
+		if state.WhipStop == 0 {
+			state.WhipStop = state.Tick
+			start, stop := state.Mans[res.Man_Whip].Position, state.Mans[res.Man_Whip].Target
+			start.X += 16 * PixelSize / 2
+			start.Y -= 16 * PixelSize / 2
+			stop.Y -= 16 * PixelSize / 2
+			delta := Coord{stop.X - start.X, stop.Y - start.Y}
+			dist1 := math.Hypot(float64(delta.X), float64(delta.Y))
+			if state.WhipStart < state.WhipStop-WhipTime {
+				state.WhipStart = state.WhipStop - WhipTime
+			}
+			dist2 := float64(state.WhipStop-state.WhipStart) * 128 * PixelSize / WhipTime
+			if dist2 >= 4*PixelSize {
+				stop.X = start.X + int64(float64(delta.X)*dist2/dist1)
+				stop.Y = start.Y + int64(float64(delta.Y)*dist2/dist1)
+
+				ignore := []*Unit{&state.Mans[res.Man_Whip]}
+				var trace *Trace
+				for {
+					tr := state.Trace(start, stop, Coord{}, ignore...)
+					if tr == nil {
+						break
+					}
+					if tr.HitWorld {
+						if state.WhipPull {
+							trace = tr
+						}
+						break
+					}
+					ignore = append(ignore, tr.Unit)
+					trace = tr
+				}
+				if trace != nil {
+					// TODO: damage enemy
+
+					dx, dy := start.X-trace.Coord.X, start.Y-trace.Coord.Y
+					dist := math.Hypot(float64(dx), float64(dy))
+					if state.WhipPull {
+						state.Mans[res.Man_Whip].Velocity.X += int64(float64(-dx) / dist * 256 * PixelSize)
+						state.Mans[res.Man_Whip].Velocity.Y += int64(float64(-dy) / dist * 256 * PixelSize)
+					} else if trace.Unit != nil {
+						trace.Unit.Velocity.X += int64(float64(dx) / dist * 256 * PixelSize)
+						trace.Unit.Velocity.Y += int64(float64(dy) / dist * 256 * PixelSize)
+					}
+				}
+			}
+		}
+	}
+}
+
+type Trace struct {
+	Coord    Coord
+	HitWorld bool
+	Unit     *Unit
+}
+
+func (state *State) Trace(start, end, hull Coord, ignore ...*Unit) *Trace {
+	step := func(cur *Coord) {
+		dx, dy := end.X-cur.X, end.Y-cur.Y
+		if dx < 0 {
+			dx = -dx
+		}
+		if dy < 0 {
+			dy = -dy
+		}
+
+		if dx > dy {
+			if end.X > cur.X {
+				cur.X++
+			} else {
+				cur.X--
+			}
+		} else {
+			if end.Y > cur.Y {
+				cur.Y++
+			} else {
+				cur.Y--
+			}
+		}
+	}
+
+	traceUnit := func(cur Coord, u *Unit) *Trace {
+		for _, i := range ignore {
+			if i == u {
+				return nil
+			}
+		}
+		size := u.Size
+		if size == (Coord{}) {
+			size = DefaultSize
+		}
+		if u.Position.X <= cur.X+hull.X/2 && u.Position.Y-size.Y <= cur.Y+hull.Y/2 &&
+			u.Position.X+size.X > cur.X-hull.X/2 && u.Position.Y > cur.Y-hull.Y/2 {
+			return &Trace{Coord: cur, Unit: u}
+		}
+		return nil
+	}
+
+	for cur := start; cur != end; step(&cur) {
+		// TODO: make this work with actual interesting maps
+		if cur.Y+hull.Y/2 >= 0 {
+			return &Trace{Coord: cur, HitWorld: true}
+		}
+
+		for i := range state.Mans {
+			if t := traceUnit(cur, &state.Mans[i]); t != nil {
+				return t
+			}
+		}
+	}
+	return nil
 }
 
 func Read(conn net.Conn, packets chan<- *res.Packet) {
