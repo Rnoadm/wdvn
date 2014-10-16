@@ -64,8 +64,7 @@ func (u *Unit) OnGround(state *State) bool {
 	return tr.HitWorld
 }
 
-func (u *Unit) UpdateMan(state *State, input *res.Packet) {
-	normalMan := u == &state.Mans[res.Man_Normal]
+func (u *Unit) UpdateMan(state *State, input *res.Packet, man res.Man) {
 	onGround := u.OnGround(state)
 
 	if input.GetKeyLeft() == res.Button_pressed {
@@ -81,17 +80,31 @@ func (u *Unit) UpdateMan(state *State, input *res.Packet) {
 			u.Acceleration.X = 0
 		}
 	}
-	if !onGround && normalMan {
+	if !onGround && man == res.Man_Normal {
 		u.Acceleration.X = 0
 	}
 	if onGround && input.GetKeyUp() == res.Button_pressed {
-		if normalMan {
-			u.Acceleration.Y = -100 * PixelSize
+		if man == res.Man_Normal {
+			u.Acceleration.Y = -200 * PixelSize
 		} else {
 			u.Acceleration.Y = -300 * PixelSize
 		}
 	} else {
 		u.Acceleration.Y = 0
+	}
+	if man == res.Man_Density {
+		if input.GetMouse1() == res.Button_pressed {
+			u.Gravity++
+		}
+		if input.GetMouse2() == res.Button_pressed {
+			u.Gravity--
+		}
+		if u.Gravity < -Gravity {
+			u.Gravity = -Gravity
+		}
+		if u.Gravity > Gravity {
+			u.Gravity = Gravity
+		}
 	}
 
 	u.UpdatePhysics(state)
@@ -212,7 +225,7 @@ func (state *State) Update(input *[res.Man_count]res.Packet) {
 	state.Tick++
 
 	for i := range state.Mans {
-		state.Mans[i].UpdateMan(state, &(*input)[i])
+		state.Mans[i].UpdateMan(state, &(*input)[i], res.Man(i))
 	}
 
 	if state.WhipStop != 0 && state.WhipStop-state.WhipStart < state.Tick-state.WhipStop {
