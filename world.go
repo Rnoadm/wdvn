@@ -35,9 +35,6 @@ func (w *World) Solid(x, y int64) bool {
 }
 
 func (w *World) ensureTileExists(x, y int64) {
-	if w.Min.X <= x && w.Max.X >= x && w.Min.Y <= y && w.Max.Y >= y {
-		return
-	}
 	newMin, newMax := w.Min, w.Max
 	if w.Min.X > x {
 		newMin.X = x
@@ -49,22 +46,16 @@ func (w *World) ensureTileExists(x, y int64) {
 	} else if w.Max.Y < y {
 		newMax.Y = y
 	}
-	newTiles := make([]WorldTile, (newMax.X-newMin.X+1)*(newMax.Y-newMin.Y+1))
-	for x = newMin.X; x <= newMax.X; x++ {
-		for y = newMin.Y; y <= newMax.Y; y++ {
-			newTiles[(x-newMin.X)*(newMax.Y-newMin.Y+1)+(y-newMin.Y)] = w.Tiles[w.index(x, y)]
-		}
-	}
-	w.Min, w.Max, w.Tiles = newMin, newMax, newTiles
+	w.resize(newMin, newMax)
 }
 
 func (w *World) shrink() {
-	stride := int(w.Max.Y - w.Min.Y + 1)
+	newMin, newMax := w.Min, w.Max
 	for {
 		top, bottom, left, right := true, true, true, true
-		if w.Min.Y != w.Max.Y {
-			for x := w.Min.X; x <= w.Max.X; x++ {
-				i1, i2, i3, i4 := w.index(x, w.Min.Y), w.index(x, w.Min.Y+1), w.index(x, w.Max.Y-1), w.index(x, w.Max.Y)
+		if newMin.Y != newMax.Y {
+			for x := newMin.X; x <= newMax.X; x++ {
+				i1, i2, i3, i4 := w.index(x, newMin.Y), w.index(x, newMin.Y+1), w.index(x, newMax.Y-1), w.index(x, newMax.Y)
 				if w.Tiles[i1] != w.Tiles[i2] {
 					top = false
 				}
@@ -75,9 +66,9 @@ func (w *World) shrink() {
 		} else {
 			top, bottom = false, false
 		}
-		if w.Min.X != w.Max.X {
-			for y := w.Min.Y; y <= w.Max.Y; y++ {
-				i1, i2, i3, i4 := w.index(w.Min.X, y), w.index(w.Min.X+1, y), w.index(w.Max.X-1, y), w.index(w.Max.X, y)
+		if newMin.X != newMax.X {
+			for y := newMin.Y; y <= newMax.Y; y++ {
+				i1, i2, i3, i4 := w.index(newMin.X, y), w.index(newMin.X+1, y), w.index(newMax.X-1, y), w.index(newMax.X, y)
 				if w.Tiles[i1] != w.Tiles[i2] {
 					left = false
 				}
@@ -93,30 +84,30 @@ func (w *World) shrink() {
 			break
 		}
 		if left {
-			w.Min.X++
-			w.Tiles = w.Tiles[stride:]
+			newMin.X++
 		}
 		if right {
-			w.Max.X--
-			w.Tiles = w.Tiles[:len(w.Tiles)-stride]
+			newMax.X--
 		}
 		if top {
-			w.Min.Y++
-			old := w.Tiles
-			w.Tiles = nil
-			for i := 0; i < len(old); i += stride {
-				w.Tiles = append(w.Tiles, old[i+1:i+stride-1]...)
-			}
-			stride--
+			newMin.Y++
 		}
 		if bottom {
-			w.Max.Y--
-			old := w.Tiles
-			w.Tiles = nil
-			for i := 0; i < len(old); i += stride {
-				w.Tiles = append(w.Tiles, old[i:i+stride-1]...)
-			}
-			stride--
+			newMax.Y--
 		}
 	}
+	w.resize(newMin, newMax)
+}
+
+func (w *World) resize(newMin, newMax Coord) {
+	if newMin == w.Min && newMax == w.Max {
+		return
+	}
+	newTiles := make([]WorldTile, (newMax.X-newMin.X+1)*(newMax.Y-newMin.Y+1))
+	for x := newMin.X; x <= newMax.X; x++ {
+		for y := newMin.Y; y <= newMax.Y; y++ {
+			newTiles[(x-newMin.X)*(newMax.Y-newMin.Y+1)+(y-newMin.Y)] = w.Tiles[w.index(x, y)]
+		}
+	}
+	w.Min, w.Max, w.Tiles = newMin, newMax, newTiles
 }
