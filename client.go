@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"code.google.com/p/draw2d/draw2d"
 	"code.google.com/p/goprotobuf/proto"
 	"fmt"
 	"github.com/Rnoadm/wdvn/res"
@@ -237,22 +238,36 @@ var sky = image.NewUniform(color.RGBA{255, 255, 255, 255})
 
 func Render(w wde.Window, me res.Man, state State) {
 	img := image.NewRGBA(w.Screen().Bounds())
+	gc := draw2d.NewGraphicContext(img)
 
-	offX := int64(img.Rect.Dx()/2-sprites[me].Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
-	offY := int64(img.Rect.Dy()/2+sprites[me].Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
+	offX := int64(img.Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
+	offY := int64(img.Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
 
 	draw.Draw(img, image.Rect(img.Rect.Min.X, img.Rect.Min.Y, img.Rect.Max.X, int(offY)), sky, image.ZP, draw.Src)
 	draw.Draw(img, image.Rect(img.Rect.Min.X, int(offY), img.Rect.Max.X, img.Rect.Max.Y), ground, image.ZP, draw.Src)
 
 	for i := range state.Mans {
+		pos := state.Mans[i].Position
 		draw.Draw(img, sprites[i].Rect.Sub(sprites[i].Rect.Min).Add(image.Point{
-			X: int(state.Mans[i].Position.X/PixelSize + offX),
-			Y: int(state.Mans[i].Position.Y/PixelSize+offY) - sprites[i].Rect.Dy(),
+			X: int(pos.X/PixelSize+offX) - sprites[i].Rect.Dx()/2,
+			Y: int(pos.Y/PixelSize+offY) - sprites[i].Rect.Dy()/2,
 		}), sprites[i], sprites[i].Rect.Min, draw.Over)
+
+		target := state.Mans[i].Target
 		draw.Draw(img, image.Rect(0, 0, 1, 1).Add(image.Point{
-			X: int(state.Mans[i].Target.X/PixelSize+offX) + sprites[i].Rect.Dx()/2,
-			Y: int(state.Mans[i].Target.Y/PixelSize+offY) - sprites[i].Rect.Dy()/2,
+			X: int(target.X/PixelSize + offX),
+			Y: int(target.Y/PixelSize + offY),
 		}), sprites[i], sprites[i].Rect.Min, draw.Over)
+
+		switch res.Man(i) {
+		case res.Man_Whip:
+			if state.WhipStop != 0 {
+				gc.SetStrokeColor(color.Black)
+				gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize+offY))
+				gc.LineTo(float64(state.WhipEnd.X/PixelSize+offX), float64(state.WhipEnd.Y/PixelSize+offY))
+				gc.Stroke()
+			}
+		}
 	}
 
 	w.Screen().CopyRGBA(img, img.Rect)
