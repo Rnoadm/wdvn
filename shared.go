@@ -321,7 +321,6 @@ type Trace struct {
 }
 
 func (t *Trace) Collide(ignore ...*Unit) *Unit {
-	log.Println(t)
 search:
 	for i := range t.Units {
 		for _, u := range ignore {
