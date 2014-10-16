@@ -47,6 +47,7 @@ func Client(conn net.Conn) {
 		KeyLeft:  res.Button_released.Enum(),
 		KeyRight: res.Button_released.Enum(),
 	}
+	state.World = FooLevel
 
 	sendInput := func(p *res.Packet) {
 		inputch <- p
@@ -83,10 +84,7 @@ func Client(conn net.Conn) {
 		}
 	}()
 
-	var tick <-chan time.Time
-	if *flagPredict {
-		tick = time.Tick(time.Second / TicksPerSecond)
-	}
+	tick := time.Tick(time.Second / TicksPerSecond)
 
 	for {
 		select {

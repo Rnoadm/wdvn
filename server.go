@@ -138,6 +138,8 @@ func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Pack
 	var state State
 	var input [res.Man_count]res.Packet
 
+	state.World = FooLevel
+
 	tick := time.Tick(time.Second / TicksPerSecond)
 
 	for {

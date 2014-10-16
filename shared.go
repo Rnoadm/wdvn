@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"code.google.com/p/goprotobuf/proto"
 	"encoding/binary"
+	"encoding/gob"
 	"github.com/Rnoadm/wdvn/res"
 	"io"
 	"log"
@@ -206,28 +208,6 @@ func (u *Unit) UpdatePhysics(state *State) {
 	}
 }
 
-type World struct{}
-
-func (w *World) Tile(x, y int64) int {
-	if y*2 < x {
-		return 0
-	}
-	if y*2 == x {
-		return 4
-	}
-	if y*2 == x+1 {
-		return 2
-	}
-	if y*2 == x+2 {
-		return 7
-	}
-	return 1
-}
-
-func (w *World) Solid(x, y int64) bool {
-	return y*2 >= x
-}
-
 type State struct {
 	Tick      uint64
 	Mans      [res.Man_count]Unit
@@ -235,7 +215,7 @@ type State struct {
 	WhipStop  uint64
 	WhipEnd   Coord
 	WhipPull  bool
-	World
+	World     *World
 }
 
 func (state *State) Update(input *[res.Man_count]res.Packet) {
@@ -515,4 +495,16 @@ func Write(conn net.Conn, packets <-chan *res.Packet) {
 
 func Send(ch chan<- *res.Packet, p *res.Packet) {
 	ch <- p
+}
+
+var (
+	FooLevel = LoadWorld(res.FooLevel)
+)
+
+func LoadWorld(b []byte) (w *World) {
+	err := gob.NewDecoder(bytes.NewReader(b)).Decode(&w)
+	if err != nil {
+		panic(err)
+	}
+	return
 }
