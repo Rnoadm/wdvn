@@ -216,6 +216,7 @@ func Client(conn net.Conn) {
 }
 
 var sprites [res.Man_count]*image.RGBA
+var terrain []*image.RGBA
 
 func init() {
 	src, err := png.Decode(bytes.NewReader(res.MansPng))
@@ -231,10 +232,17 @@ func init() {
 	for i := range sprites {
 		sprites[i] = dst.SubImage(r.Add(image.Pt(0, y*i))).(*image.RGBA)
 	}
-}
 
-var ground = image.NewUniform(color.RGBA{0, 0, 0, 255})
-var sky = image.NewUniform(color.RGBA{255, 255, 255, 255})
+	src, err = png.Decode(bytes.NewReader(res.TilePng))
+	if err != nil {
+		panic(err)
+	}
+	dst = image.NewRGBA(src.Bounds())
+	draw.Draw(dst, dst.Rect, src, dst.Rect.Min, draw.Src)
+	for x := dst.Rect.Min.X; x < dst.Rect.Max.X; x += dst.Rect.Dy() {
+		terrain = append(terrain, dst.SubImage(image.Rect(x, dst.Rect.Min.Y, x+dst.Rect.Dy(), dst.Rect.Max.Y)).(*image.RGBA))
+	}
+}
 
 func Render(w wde.Window, me res.Man, state State) {
 	img := image.NewRGBA(w.Screen().Bounds())
@@ -243,8 +251,17 @@ func Render(w wde.Window, me res.Man, state State) {
 	offX := int64(img.Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
 	offY := int64(img.Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
 
-	draw.Draw(img, image.Rect(img.Rect.Min.X, img.Rect.Min.Y, img.Rect.Max.X, int(offY)), sky, image.ZP, draw.Src)
-	draw.Draw(img, image.Rect(img.Rect.Min.X, int(offY), img.Rect.Max.X, img.Rect.Max.Y), ground, image.ZP, draw.Src)
+	min, max := Coord{-16, -16}, Coord{int64(img.Rect.Dx()) + 16, int64(img.Rect.Dy()) + 16}
+	min = min.Sub(Coord{offX, offY}).Floor(16)
+	max = max.Sub(Coord{offX, offY}).Floor(16)
+
+	for x := min.X; x < max.X; x += 16 {
+		for y := min.Y; y < max.Y; y += 16 {
+			t := terrain[state.World.Tile(x/16, y/16)]
+			r := image.Rect(int(x+offX), int(y+offY), int(x+offX+16), int(y+offY+16))
+			draw.Draw(img, r, t, t.Rect.Min, draw.Src)
+		}
+	}
 
 	for i := range state.Mans {
 		pos := state.Mans[i].Position

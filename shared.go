@@ -40,12 +40,19 @@ func (c Coord) Hull() (min, max Coord) {
 	return
 }
 
+func (c Coord) Floor(i int64) Coord {
+	x := (c.X%i + i) % i
+	y := (c.Y%i + i) % i
+	return Coord{c.X - x, c.Y - y}
+}
+
 type Unit struct {
 	Position     Coord
 	Velocity     Coord
 	Acceleration Coord
 	Target       Coord
 	Size         Coord
+	Gravity      int64
 }
 
 func (u *Unit) OnGround(state *State) bool {
@@ -96,7 +103,7 @@ func (u *Unit) UpdateMan(state *State, input *res.Packet) {
 func (u *Unit) UpdatePhysics(state *State) {
 	onGround := u.OnGround(state)
 
-	if onGround {
+	if onGround && u.Velocity.Y > 0 {
 		// TODO: deal physics damage based on velocity
 		u.Velocity.Y = 0
 	}
@@ -107,7 +114,7 @@ func (u *Unit) UpdatePhysics(state *State) {
 	u.Velocity.X += u.Acceleration.X
 	u.Velocity.Y += u.Acceleration.Y
 	if !onGround {
-		u.Velocity.Y += Gravity
+		u.Velocity.Y += Gravity + u.Gravity
 	}
 
 	if u.Velocity.X > TerminalVelocity {
@@ -141,12 +148,54 @@ func (u *Unit) UpdatePhysics(state *State) {
 	}
 	tr := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, u.Velocity.Y / TicksPerSecond}), size, true)
 	if tr.End == u.Position {
-		stuck := state.Trace(u.Position.Add(Coord{0, -size.Y}), u.Position, size, true)
-		if stuck.End != u.Position.Add(Coord{0, -size.Y}) {
-			tr = stuck
+		if u.Velocity == (Coord{}) {
+			stuck := state.Trace(tr.End.Add(Coord{0, -size.Y}), tr.End, size, true)
+			if stuck.End != tr.End {
+				tr = stuck
+			}
+		} else {
+			stuck := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, 0}), size, true)
+			if stuck.End != tr.End {
+				tr = stuck
+				u.Velocity.Y = 0
+			} else {
+				stuck = state.Trace(u.Position, u.Position.Add(Coord{0, u.Velocity.Y / TicksPerSecond}), size, true)
+				if stuck.End != tr.End {
+					tr = stuck
+					u.Velocity.X = 0
+				} else {
+					stuck = state.Trace(tr.End.Add(Coord{0, -size.Y}), tr.End, size, true)
+					if stuck.End != tr.End {
+						tr = stuck
+						u.Velocity = Coord{}
+					}
+				}
+			}
 		}
 	}
 	u.Position = tr.End
+}
+
+type World struct{}
+
+func (w *World) Tile(x, y int64) int {
+	if y*2 < x {
+		return 0
+	}
+	if y*2 == x {
+		return 4
+	}
+	if y*2 == x+1 {
+		return 2
+	}
+	if y*2 == x+2 {
+		return 7
+	}
+	return 1
+}
+
+func (w *World) Solid(x, y int64) bool {
+	return y*2 >= x
 }
 
 type State struct {
@@ -156,6 +205,7 @@ type State struct {
 	WhipStop  uint64
 	WhipEnd   Coord
 	WhipPull  bool
+	World
 }
 
 func (state *State) Update(input *[res.Man_count]res.Packet) {
@@ -189,7 +239,7 @@ func (state *State) Update(input *[res.Man_count]res.Packet) {
 				stop.X = start.X + int64(float64(delta.X)*dist2/dist1)
 				stop.Y = start.Y + int64(float64(delta.Y)*dist2/dist1)
 
-				tr := state.Trace(start, stop, Coord{}, false)
+				tr := state.Trace(start, stop, Coord{1, 1}, false)
 				var u *Unit
 				ex, ey := start.X, start.Y
 				if tr.End != (Coord{}) {
@@ -216,9 +266,11 @@ func (state *State) Update(input *[res.Man_count]res.Packet) {
 					if state.WhipPull {
 						state.Mans[res.Man_Whip].Velocity.X += int64(float64(-dx) / dist * 256 * PixelSize)
 						state.Mans[res.Man_Whip].Velocity.Y += int64(float64(-dy) / dist * 256 * PixelSize)
+						state.Mans[res.Man_Whip].Velocity.Y -= Gravity * 20
 					} else if u != nil {
 						u.Velocity.X += int64(float64(dx) / dist * 256 * PixelSize)
 						u.Velocity.Y += int64(float64(dy) / dist * 256 * PixelSize)
+						u.Velocity.Y -= Gravity * 20
 					}
 				}
 			}
@@ -246,15 +298,20 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 	min = min.Add(start)
 	max = max.Add(start)
 	delta := end.Sub(start)
-	maxDist := delta.X*delta.X + delta.Y*delta.Y
+	maxDist := int64(1<<63 - 1)
 
-	traceAABB := func(mins, maxs Coord) int64 {
-		if max.X >= mins.X && min.X <= maxs.X && max.Y >= mins.Y && min.Y <= maxs.Y {
-			return 0
+	traceAABB := func(mins, maxs Coord) (dist, x, y int64) {
+		if delta.X >= 0 && (min.X >= maxs.X || max.X+delta.X <= mins.X) {
+			return -1, 0, 0
 		}
-
-		if delta.X == 0 && delta.Y == 0 {
-			return -1
+		if delta.X <= 0 && (min.X+delta.X >= maxs.X || max.X <= mins.X) {
+			return -1, 0, 0
+		}
+		if delta.Y >= 0 && (min.Y >= maxs.Y || max.Y+delta.Y <= mins.Y) {
+			return -1, 0, 0
+		}
+		if delta.Y <= 0 && (min.Y+delta.Y >= maxs.Y || max.Y <= mins.Y) {
+			return -1, 0, 0
 		}
 
 		var xEnter, xExit float64
@@ -265,8 +322,8 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 			xEnter = float64(maxs.X-min.X) / float64(delta.X)
 			xExit = float64(mins.X-max.X) / float64(delta.X)
 		} else {
-			xEnter = 0
-			xExit = 1
+			xEnter = math.Inf(-1)
+			xExit = math.Inf(1)
 		}
 
 		var yEnter, yExit float64
@@ -277,39 +334,26 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 			yEnter = float64(maxs.Y-min.Y) / float64(delta.Y)
 			yExit = float64(mins.Y-max.Y) / float64(delta.Y)
 		} else {
-			yEnter = 0
-			yExit = 1
-		}
-
-		if (xEnter < 0 && yEnter < 0) || xEnter > 1 || yEnter > 1 {
-			return -1
+			yEnter = math.Inf(-1)
+			yExit = math.Inf(1)
 		}
 
 		enter := math.Max(xEnter, yEnter)
 		exit := math.Min(xExit, yExit)
 
-		if enter > exit {
-			return -1
+		if enter < 0 || enter > 1 || enter > exit {
+			return -1, 0, 0
 		}
 
-		var x, y int64
-		if xEnter < yEnter {
-			if delta.X < 0 {
-				x = maxs.X - min.X
-			} else {
-				x = max.X - mins.X
-			}
-			y = x * delta.Y / delta.X
-		} else {
-			if delta.Y < 0 {
-				y = maxs.Y - min.Y
-			} else {
-				y = max.Y - mins.Y
-			}
-			x = y * delta.Y / delta.X
+		x = int64(enter * float64(delta.X))
+		y = int64(enter * float64(delta.Y))
+
+		dist = x*x + y*y
+		if dist < 0 {
+			dist = 0
 		}
 
-		return x*x + y*y
+		return
 	}
 
 	traceUnit := func(u *Unit) int64 {
@@ -321,23 +365,39 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 		mins = mins.Add(u.Position)
 		maxs = maxs.Add(u.Position)
 
-		return traceAABB(mins, maxs)
+		d, _, _ := traceAABB(mins, maxs)
+		return d
 	}
 
 	tr := &Trace{}
 
 	tr.End = end
 
-	// TODO: make this work on more interesting maps
-	if max.Y > 0 {
-		tr.HitWorld, tr.End = true, start
-		return tr
+	bounds_min, bounds_max := min, max
+	if delta.X < 0 {
+		bounds_min.X += delta.X
+	} else {
+		bounds_max.X += delta.X
 	}
-	if max.Y+delta.Y > 0 {
-		dx := start.Y * delta.X / delta.Y
-		maxDist = max.Y*max.Y + dx*dx
+	if delta.Y < 0 {
+		bounds_min.Y += delta.Y
+	} else {
+		bounds_max.Y += delta.Y
+	}
+	bounds_min = bounds_min.Floor(16 * PixelSize)
+	bounds_max = bounds_max.Floor(16 * PixelSize).Add(Coord{16 * PixelSize, 16 * PixelSize})
 
-		tr.HitWorld, tr.End = true, Coord{start.X - dx, -hull.Y / 2}
+	for x := bounds_min.X; x <= bounds_max.X; x += 16 * PixelSize {
+		for y := bounds_min.Y; y <= bounds_max.Y; y += 16 * PixelSize {
+			if state.World.Solid(x/16/PixelSize, y/16/PixelSize) {
+				dist, dx, dy := traceAABB(Coord{x, y}, Coord{x + 16*PixelSize, y + 16*PixelSize})
+				if dist >= 0 && dist < maxDist {
+					maxDist = dist
+					tr.HitWorld = true
+					tr.End = start.Add(Coord{dx, dy})
+				}
+			}
+		}
 	}
 
 	if !worldOnly {
