@@ -60,8 +60,9 @@ func (u *Unit) OnGround(state *State) bool {
 	if size == (Coord{}) {
 		size = DefaultSize
 	}
-	tr := state.Trace(u.Position, u.Position.Add(Coord{0, 1}), size, true)
-	return tr.HitWorld
+	tr := state.Trace(u.Position, u.Position.Add(Coord{0, 1}), size, false)
+	tr.Collide(u)
+	return tr.End == u.Position
 }
 
 func (u *Unit) UpdateMan(state *State, input *res.Packet, man res.Man) {
@@ -83,7 +84,7 @@ func (u *Unit) UpdateMan(state *State, input *res.Packet, man res.Man) {
 	if !onGround && man == res.Man_Normal {
 		u.Acceleration.X = 0
 	}
-	if onGround && input.GetKeyUp() == res.Button_pressed {
+	if onGround && u.Velocity.Y == 0 && input.GetKeyUp() == res.Button_pressed {
 		if man == res.Man_Normal {
 			u.Acceleration.Y = -200 * PixelSize
 		} else {
@@ -159,34 +160,50 @@ func (u *Unit) UpdatePhysics(state *State) {
 	if size == (Coord{}) {
 		size = DefaultSize
 	}
-	tr := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, u.Velocity.Y / TicksPerSecond}), size, true)
+	tr := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, u.Velocity.Y / TicksPerSecond}), size, false)
+	collide := tr.Collide(u)
 	if tr.End == u.Position {
 		if u.Velocity == (Coord{}) {
-			stuck := state.Trace(tr.End.Add(Coord{0, -size.Y}), tr.End, size, true)
+			stuck := state.Trace(tr.End.Add(Coord{0, -size.Y}), tr.End, size, false)
+			collide2 := stuck.Collide(u)
 			if stuck.End != tr.End {
-				tr = stuck
+				tr, collide = stuck, collide2
 			}
 		} else {
-			stuck := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, 0}), size, true)
+			stuck := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, 0}), size, false)
+			collide2 := stuck.Collide(u)
 			if stuck.End != tr.End {
-				tr = stuck
-				u.Velocity.Y = 0
+				tr, collide = stuck, collide2
 			} else {
-				stuck = state.Trace(u.Position, u.Position.Add(Coord{0, u.Velocity.Y / TicksPerSecond}), size, true)
+				stuck = state.Trace(u.Position, u.Position.Add(Coord{0, u.Velocity.Y / TicksPerSecond}), size, false)
+				collide2 = stuck.Collide(u)
 				if stuck.End != tr.End {
-					tr = stuck
-					u.Velocity.X = 0
+					tr, collide = stuck, collide2
 				} else {
-					stuck = state.Trace(tr.End.Add(Coord{0, -size.Y}), tr.End, size, true)
+					stuck = state.Trace(tr.End.Add(Coord{0, -size.Y}), tr.End, size, false)
+					collide2 = stuck.Collide(u)
 					if stuck.End != tr.End {
-						tr = stuck
-						u.Velocity = Coord{}
+						tr, collide = stuck, collide2
 					}
 				}
 			}
 		}
 	}
 	u.Position = tr.End
+	if collide != nil {
+		g := Gravity*2 + u.Gravity + collide.Gravity
+		ux := collide.Velocity.X * (Gravity + collide.Gravity) / g
+		cx := u.Velocity.X * (Gravity + u.Gravity) / g
+		if ux < cx {
+			ux -= Gravity
+			cx += Gravity
+		} else {
+			ux += Gravity
+			cx -= Gravity
+		}
+		u.Velocity.X, collide.Velocity.X = collide.Velocity.X, u.Velocity.X
+		collide.Velocity.Y, u.Velocity.Y = 0, 0
+	}
 }
 
 type World struct{}
@@ -264,7 +281,7 @@ func (state *State) Update(input *[res.Man_count]res.Packet) {
 					}
 					u = tr.Units[i].Unit
 					if !tr.HitWorld {
-						ex, ey = u.Position.X, u.Position.Y
+						ex, ey = tr.Units[i].X, tr.Units[i].Y
 					}
 					break
 				}
@@ -294,6 +311,7 @@ func (state *State) Update(input *[res.Man_count]res.Packet) {
 type TraceUnit struct {
 	*Unit
 	Dist int64 // distance squared
+	X, Y int64
 }
 
 type Trace struct {
@@ -302,9 +320,24 @@ type Trace struct {
 	HitWorld bool
 }
 
-func (t Trace) Len() int           { return len(t.Units) }
-func (t Trace) Swap(i, j int)      { t.Units[i], t.Units[j] = t.Units[j], t.Units[i] }
-func (t Trace) Less(i, j int) bool { return t.Units[i].Dist < t.Units[j].Dist }
+func (t *Trace) Collide(ignore ...*Unit) *Unit {
+	log.Println(t)
+search:
+	for i := range t.Units {
+		for _, u := range ignore {
+			if u == t.Units[i].Unit {
+				continue search
+			}
+		}
+		t.End = Coord{t.Units[i].X, t.Units[i].Y}
+		return t.Units[i].Unit
+	}
+	return nil
+}
+
+func (t *Trace) Len() int           { return len(t.Units) }
+func (t *Trace) Swap(i, j int)      { t.Units[i], t.Units[j] = t.Units[j], t.Units[i] }
+func (t *Trace) Less(i, j int) bool { return t.Units[i].Dist < t.Units[j].Dist }
 
 func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 	min, max := hull.Hull()
@@ -369,7 +402,7 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 		return
 	}
 
-	traceUnit := func(u *Unit) int64 {
+	traceUnit := func(u *Unit) (dist, x, y int64) {
 		size := u.Size
 		if size == (Coord{}) {
 			size = DefaultSize
@@ -378,8 +411,8 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 		mins = mins.Add(u.Position)
 		maxs = maxs.Add(u.Position)
 
-		d, _, _ := traceAABB(mins, maxs)
-		return d
+		dist, x, y = traceAABB(mins, maxs)
+		return
 	}
 
 	tr := &Trace{}
@@ -416,8 +449,8 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 	if !worldOnly {
 		for i := range state.Mans {
 			u := &state.Mans[i]
-			if d := traceUnit(u); d >= 0 && d <= maxDist {
-				tr.Units = append(tr.Units, TraceUnit{u, d})
+			if dist, x, y := traceUnit(u); dist >= 0 && dist <= maxDist {
+				tr.Units = append(tr.Units, TraceUnit{Unit: u, Dist: dist, X: start.X + x, Y: start.Y + y})
 			}
 		}
 

@@ -49,11 +49,6 @@ func Client(conn net.Conn) {
 	}
 
 	sendInput := func(p *res.Packet) {
-		if p == nil {
-			proto.Merge(&input[me], releaseAll)
-		} else {
-			proto.Merge(&input[me], p)
-		}
 		inputch <- p
 	}
 	go func() {
@@ -128,7 +123,7 @@ func Client(conn net.Conn) {
 				Repaint()
 			case wde.KeyDownEvent:
 				switch e.Key {
-				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow:
+				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow, wde.KeySpace:
 					sendInput(&res.Packet{
 						KeyUp: res.Button_pressed.Enum(),
 					})
@@ -149,7 +144,7 @@ func Client(conn net.Conn) {
 				// TODO
 			case wde.KeyUpEvent:
 				switch e.Key {
-				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow:
+				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow, wde.KeySpace:
 					sendInput(&res.Packet{
 						KeyUp: res.Button_released.Enum(),
 					})
