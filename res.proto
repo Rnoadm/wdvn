@@ -3,6 +3,7 @@ enum Type {
 	SelectMan = 1;
 	MoveMan   = 2;
 	Input     = 3;
+	FullState = 4;
 }
 
 enum Man {
@@ -19,10 +20,11 @@ enum Button {
 }
 
 message Packet {
-	required Type type = 1; 
-	optional Man man   = 2;
-	optional sint64 x  = 3;
-	optional sint64 y  = 4;
+	required Type type  = 1; 
+	optional Man man    = 2;
+	optional sint64 x   = 3;
+	optional sint64 y   = 4;
+	optional bytes data = 5;
 
 	optional Button mouse1    = 16;
 	optional Button mouse2    = 17;

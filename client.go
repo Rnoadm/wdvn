@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"code.google.com/p/draw2d/draw2d"
 	"code.google.com/p/goprotobuf/proto"
+	"encoding/gob"
 	"fmt"
 	"github.com/Rnoadm/wdvn/res"
 	"github.com/skelterjohn/go.wde"
@@ -111,6 +112,14 @@ func Client(conn net.Conn) {
 
 			case res.Type_Input:
 				proto.Merge(&input[p.GetMan()], p)
+
+			case res.Type_FullState:
+				state = State{}
+				err := gob.NewDecoder(bytes.NewReader(p.GetData())).Decode(&state)
+				if err != nil {
+					panic(err)
+				}
+				Repaint()
 			}
 
 		case event := <-w.EventChan():
@@ -244,14 +253,16 @@ func Render(w wde.Window, me res.Man, state State) {
 	offX := int64(img.Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
 	offY := int64(img.Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
 
-	min, max := Coord{-16, -16}, Coord{int64(img.Rect.Dx()) + 16, int64(img.Rect.Dy()) + 16}
-	min = min.Sub(Coord{offX, offY}).Floor(16)
-	max = max.Sub(Coord{offX, offY}).Floor(16)
+	size := int64(terrain[0].Rect.Dy())
 
-	for x := min.X; x < max.X; x += 16 {
-		for y := min.Y; y < max.Y; y += 16 {
-			t := terrain[state.World.Tile(x/16, y/16)]
-			r := image.Rect(int(x+offX), int(y+offY), int(x+offX+16), int(y+offY+16))
+	min, max := Coord{-size, -size}, Coord{int64(img.Rect.Dx()) + size, int64(img.Rect.Dy()) + size}
+	min = min.Sub(Coord{offX, offY}).Floor(size)
+	max = max.Sub(Coord{offX, offY}).Floor(size)
+
+	for x := min.X; x < max.X; x += size {
+		for y := min.Y; y < max.Y; y += size {
+			t := terrain[state.World.Tile(x/size, y/size)]
+			r := image.Rect(int(x+offX), int(y+offY), int(x+offX+size), int(y+offY+size))
 			draw.Draw(img, r, t, t.Rect.Min, draw.Src)
 		}
 	}

@@ -27,6 +27,7 @@ const (
 	Type_SelectMan Type = 1
 	Type_MoveMan   Type = 2
 	Type_Input     Type = 3
+	Type_FullState Type = 4
 )
 
 var Type_name = map[int32]string{
@@ -34,12 +35,14 @@ var Type_name = map[int32]string{
 	1: "SelectMan",
 	2: "MoveMan",
 	3: "Input",
+	4: "FullState",
 }
 var Type_value = map[string]int32{
 	"Ping":      0,
 	"SelectMan": 1,
 	"MoveMan":   2,
 	"Input":     3,
+	"FullState": 4,
 }
 
 func (x Type) Enum() *Type {
@@ -139,6 +142,7 @@ type Packet struct {
 	Man              *Man    `protobuf:"varint,2,opt,name=man,enum=Man" json:"man,omitempty"`
 	X                *int64  `protobuf:"zigzag64,3,opt,name=x" json:"x,omitempty"`
 	Y                *int64  `protobuf:"zigzag64,4,opt,name=y" json:"y,omitempty"`
+	Data             []byte  `protobuf:"bytes,5,opt,name=data" json:"data,omitempty"`
 	Mouse1           *Button `protobuf:"varint,16,opt,name=mouse1,enum=Button" json:"mouse1,omitempty"`
 	Mouse2           *Button `protobuf:"varint,17,opt,name=mouse2,enum=Button" json:"mouse2,omitempty"`
 	KeyUp            *Button `protobuf:"varint,18,opt,name=key_up,enum=Button" json:"key_up,omitempty"`
@@ -178,6 +182,13 @@ func (m *Packet) GetY() int64 {
 		return *m.Y
 	}
 	return 0
+}
+
+func (m *Packet) GetData() []byte {
+	if m != nil {
+		return m.Data
+	}
+	return nil
 }
 
 func (m *Packet) GetMouse1() Button {

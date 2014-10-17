@@ -1,13 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"code.google.com/p/goprotobuf/proto"
+	"encoding/gob"
 	"github.com/Rnoadm/wdvn/res"
 	"net"
 	"time"
 )
 
-func Listen(l net.Listener) {
+func Listen(l net.Listener, world *World) {
 	defer l.Close()
 
 	broadcast, register, unregister := make(chan *res.Packet), make(chan chan<- *res.Packet), make(chan chan<- *res.Packet)
@@ -16,7 +18,7 @@ func Listen(l net.Listener) {
 	ch := make(chan *res.Packet)
 	register <- ch
 	state := make(chan State)
-	go Manager(ch, state, broadcast)
+	go Manager(ch, state, broadcast, world)
 
 	disconnect := make(chan res.Man, res.Man_count)
 
@@ -86,12 +88,17 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 	}
 
 	state := <-statech
-	for i := range state.Mans {
+	{
+		var buf bytes.Buffer
+
+		err := gob.NewEncoder(&buf).Encode(&state)
+		if err != nil {
+			panic(err)
+		}
+
 		write <- &res.Packet{
-			Type: res.Type_MoveMan.Enum(),
-			Man:  res.Man(i).Enum(),
-			X:    proto.Int64(state.Mans[i].Position.X),
-			Y:    proto.Int64(state.Mans[i].Position.Y),
+			Type: res.Type_FullState.Enum(),
+			Data: buf.Bytes(),
 		}
 	}
 
@@ -134,11 +141,11 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 	}
 }
 
-func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Packet) {
+func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Packet, world *World) {
 	var state State
 	var input [res.Man_count]res.Packet
 
-	state.World = FooLevel
+	state.World = world
 
 	tick := time.Tick(time.Second / TicksPerSecond)
 
