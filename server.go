@@ -175,7 +175,11 @@ func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Pack
 	var state State
 	var input [res.Man_count]res.Packet
 
+	state.Lives = DefaultLives
 	state.World = world
+	for i := range state.Mans {
+		state.Mans[i].Health = DefaultHealth
+	}
 
 	tick := time.Tick(time.Second / TicksPerSecond)
 

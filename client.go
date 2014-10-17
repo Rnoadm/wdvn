@@ -302,7 +302,7 @@ func Render(w wde.Window, me res.Man, state State) {
 
 		switch res.Man(i) {
 		case res.Man_Whip:
-			if state.WhipStop != 0 {
+			if state.WhipStop != 0 && state.WhipEnd != (Coord{}) {
 				gc.SetStrokeColor(color.Black)
 				gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize+offY))
 				gc.LineTo(float64(state.WhipEnd.X/PixelSize+offX), float64(state.WhipEnd.Y/PixelSize+offY))

@@ -110,7 +110,7 @@ func Editor(filename string) {
 			c := Coord{offX + int64(e.Where.X-width/2), offY + int64(e.Where.Y-height/2)}
 			c = c.Floor(size)
 			world.ensureTileExists(c.X/size, c.Y/size)
-			i := world.index(c.X/size, c.Y/size)
+			i, _ := world.index(c.X/size, c.Y/size)
 
 			if solidity {
 				world.Tiles[i].Solid = !world.Tiles[i].Solid

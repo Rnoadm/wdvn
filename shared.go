@@ -14,13 +14,22 @@ import (
 )
 
 const (
-	PixelSize        = 64
-	Gravity          = PixelSize * 9         // per tick
-	TerminalVelocity = PixelSize * 1000      // flat
-	MinimumVelocity  = PixelSize * PixelSize // unit stops moving if on ground
-	Friction         = 100                   // 1/Friction of the velocity is removed per tick
-	TicksPerSecond   = 100
-	WhipTime         = 0.5 * TicksPerSecond
+	PixelSize               = 64
+	Gravity                 = PixelSize * 9         // per tick
+	TerminalVelocity        = PixelSize * 1000      // flat
+	MinimumVelocity         = PixelSize * PixelSize // unit stops moving if on ground
+	Friction                = 100                   // 1/Friction of the velocity is removed per tick
+	TicksPerSecond          = 100
+	WhipTimeMin             = 0.2 * TicksPerSecond
+	WhipTimeMax             = 1.5 * TicksPerSecond
+	WhipDamageMin           = 1
+	WhipDamageMax           = 5
+	WhipSpeedMin            = 64 * PixelSize
+	WhipSpeedMax            = 512 * PixelSize
+	WhipDistance            = 4 * 16 * PixelSize
+	WhipAntiGravityDuration = TicksPerSecond / 2
+	DefaultLives            = 100
+	DefaultHealth           = 10
 )
 
 var DefaultSize = Coord{16 * PixelSize, 16 * PixelSize}
@@ -55,6 +64,7 @@ type Unit struct {
 	Target       Coord
 	Size         Coord
 	Gravity      int64
+	Health       int64
 }
 
 func (u *Unit) OnGround(state *State) bool {
@@ -67,7 +77,32 @@ func (u *Unit) OnGround(state *State) bool {
 	return tr.End == u.Position
 }
 
+func (u *Unit) Hurt(state *State, by *Unit, amount int64) {
+	u.Health -= amount
+}
+
+func (u *Unit) IsMan(state *State) bool {
+	for i := range state.Mans {
+		if u == &state.Mans[i] {
+			return true
+		}
+	}
+	return false
+}
+
 func (u *Unit) UpdateMan(state *State, input *res.Packet, man res.Man) {
+	if u.Health <= 0 {
+		if state.Lives > 0 {
+			state.Lives--
+			u.Health = DefaultHealth
+			u.Position = state.SpawnPoint
+			u.Gravity = 0
+			u.Velocity = Coord{}
+			u.Acceleration = Coord{}
+		}
+		return
+	}
+
 	onGround := u.OnGround(state)
 
 	if input.GetKeyLeft() == res.Button_pressed {
@@ -90,7 +125,7 @@ func (u *Unit) UpdateMan(state *State, input *res.Packet, man res.Man) {
 		if man == res.Man_Normal {
 			u.Acceleration.Y = -200 * PixelSize
 		} else {
-			u.Acceleration.Y = -300 * PixelSize
+			u.Acceleration.Y = -350 * PixelSize
 		}
 	} else {
 		u.Acceleration.Y = 0
@@ -193,29 +228,30 @@ func (u *Unit) UpdatePhysics(state *State) {
 	}
 	u.Position = tr.End
 	if collide != nil {
-		g := Gravity*2 + u.Gravity + collide.Gravity
-		ux := collide.Velocity.X * (Gravity + collide.Gravity) / g
-		cx := u.Velocity.X * (Gravity + u.Gravity) / g
-		if ux < cx {
-			ux -= Gravity
-			cx += Gravity
-		} else {
-			ux += Gravity
-			cx -= Gravity
+		if !u.IsMan(state) || !collide.IsMan(state) {
+			u.Hurt(state, collide, 1)
+			collide.Hurt(state, u, 1)
+			u.Velocity.X, u.Velocity.Y = u.Velocity.X*2, u.Velocity.Y*2
+			collide.Velocity.X, collide.Velocity.Y = collide.Velocity.X*2, collide.Velocity.Y*2
 		}
-		u.Velocity.X, collide.Velocity.X = collide.Velocity.X, u.Velocity.X
-		collide.Velocity.Y, u.Velocity.Y = 0, 0
+		collide.Velocity.X, u.Velocity.X = u.Velocity.X, collide.Velocity.X
+		collide.Velocity.Y, u.Velocity.Y = u.Velocity.Y-Gravity, collide.Velocity.Y-Gravity
+	}
+	if pos := u.Position.Floor(PixelSize * 16); state.World.Outside(pos.X/16/PixelSize, pos.Y/16/PixelSize) > 20 {
+		u.Hurt(state, nil, u.Health)
 	}
 }
 
 type State struct {
-	Tick      uint64
-	Mans      [res.Man_count]Unit
-	WhipStart uint64
-	WhipStop  uint64
-	WhipEnd   Coord
-	WhipPull  bool
-	World     *World
+	Tick       uint64
+	Lives      uint64
+	Mans       [res.Man_count]Unit
+	WhipStart  uint64
+	WhipStop   uint64
+	WhipEnd    Coord
+	WhipPull   bool
+	SpawnPoint Coord
+	World      *World
 }
 
 func (state *State) Update(input *[res.Man_count]res.Packet) {
@@ -227,6 +263,12 @@ func (state *State) Update(input *[res.Man_count]res.Packet) {
 
 	if state.WhipStop != 0 && state.WhipStop-state.WhipStart < state.Tick-state.WhipStop {
 		state.WhipStart, state.WhipStop, state.WhipEnd = 0, 0, Coord{}
+	}
+	if state.WhipStop == 0 && state.Mans[res.Man_Whip].Gravity != 0 {
+		state.Mans[res.Man_Whip].Gravity += Gravity / WhipAntiGravityDuration
+		if state.Mans[res.Man_Whip].Gravity > 0 {
+			state.Mans[res.Man_Whip].Gravity = 0
+		}
 	}
 	m1, m2 := (*input)[res.Man_Whip].GetMouse1() == res.Button_pressed, (*input)[res.Man_Whip].GetMouse2() == res.Button_pressed
 	if m1 || m2 {
@@ -241,45 +283,36 @@ func (state *State) Update(input *[res.Man_count]res.Packet) {
 			delta := stop.Sub(start)
 
 			dist1 := math.Hypot(float64(delta.X), float64(delta.Y))
-			if state.WhipStart < state.WhipStop-WhipTime {
-				state.WhipStart = state.WhipStop - WhipTime
+			if state.WhipStart < state.WhipStop-WhipTimeMax {
+				state.WhipStart = state.WhipStop - WhipTimeMax
 			}
-			dist2 := float64(state.WhipStop-state.WhipStart) * 128 * PixelSize / WhipTime
-			if dist2 >= 16*PixelSize {
+			dist2 := float64(4 * 16 * PixelSize)
+			state.WhipEnd = Coord{}
+			if state.WhipStart < state.WhipStop-WhipTimeMin {
 				stop.X = start.X + int64(float64(delta.X)*dist2/dist1)
 				stop.Y = start.Y + int64(float64(delta.Y)*dist2/dist1)
 
 				tr := state.Trace(start, stop, Coord{1, 1}, false)
-				var u *Unit
-				ex, ey := start.X, start.Y
-				if tr.End != (Coord{}) {
-					ex, ey = tr.End.X, tr.End.Y
-				}
-				for i := len(tr.Units) - 1; i >= 0; i-- {
-					if tr.Units[i].Unit == &state.Mans[res.Man_Whip] {
-						continue
-					}
-					u = tr.Units[i].Unit
-					if !tr.HitWorld {
-						ex, ey = tr.Units[i].X, tr.Units[i].Y
-					}
-					break
+				u := tr.Collide(&state.Mans[res.Man_Whip])
+				state.WhipEnd = tr.End
+
+				if u != nil && !u.IsMan(state) {
+					damage := int64(WhipDamageMin + (WhipDamageMax-WhipDamageMin)*(state.WhipStop-state.WhipStart)/(WhipTimeMax-WhipTimeMin))
+					u.Hurt(state, &state.Mans[res.Man_Whip], damage)
 				}
 
-				state.WhipEnd = Coord{ex, ey}
-
-				// TODO: damage enemy
-
-				dx, dy := start.X-ex, start.Y-ey
+				dx, dy := start.X-tr.End.X, start.Y-tr.End.Y
 				dist := math.Hypot(float64(dx), float64(dy))
 				if dist > 0 && (u != nil || tr.HitWorld) {
+					speed := float64(WhipSpeedMin+(WhipSpeedMax-WhipSpeedMin)*(state.WhipStop-state.WhipStart)/(WhipTimeMax-WhipTimeMin)) / dist
 					if state.WhipPull {
-						state.Mans[res.Man_Whip].Velocity.X += int64(float64(-dx) / dist * 256 * PixelSize)
-						state.Mans[res.Man_Whip].Velocity.Y += int64(float64(-dy) / dist * 256 * PixelSize)
+						state.Mans[res.Man_Whip].Velocity.X += int64(float64(-dx) * speed)
+						state.Mans[res.Man_Whip].Velocity.Y += int64(float64(-dy) * speed)
 						state.Mans[res.Man_Whip].Velocity.Y -= Gravity * 20
+						state.Mans[res.Man_Whip].Gravity = -Gravity
 					} else if u != nil {
-						u.Velocity.X += int64(float64(dx) / dist * 256 * PixelSize)
-						u.Velocity.Y += int64(float64(dy) / dist * 256 * PixelSize)
+						u.Velocity.X += int64(float64(dx) * speed)
+						u.Velocity.Y += int64(float64(dy) * speed)
 						u.Velocity.Y -= Gravity * 20
 					}
 				}
@@ -382,6 +415,10 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 	}
 
 	traceUnit := func(u *Unit) (dist, x, y int64) {
+		if u.Health <= 0 {
+			return -1, 0, 0
+		}
+
 		size := u.Size
 		if size == (Coord{}) {
 			size = DefaultSize
@@ -497,9 +534,7 @@ func Send(ch chan<- *res.Packet, p *res.Packet) {
 	ch <- p
 }
 
-var (
-	FooLevel = LoadWorld(res.FooLevel)
-)
+var FooLevel = LoadWorld(res.FooLevel)
 
 func LoadWorld(b []byte) (w *World) {
 	err := gob.NewDecoder(bytes.NewReader(b)).Decode(&w)
