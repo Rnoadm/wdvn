@@ -314,12 +314,30 @@ func Render(w wde.Window, me res.Man, state State) {
 			pos := state.Mans[i].Position
 			pos.X -= state.Mans[i].Velocity.X * int64(j) / TicksPerSecond
 			pos.Y -= state.Mans[i].Velocity.Y * int64(j) / TicksPerSecond
-			draw.DrawMask(img, sprites[i].Rect.Sub(sprites[i].Rect.Min).Add(image.Point{
+			r := sprites[i].Rect.Sub(sprites[i].Rect.Min).Add(image.Point{
 				X: int(pos.X/PixelSize+offX) - sprites[i].Rect.Dx()/2,
 				Y: int(pos.Y/PixelSize+offY) - sprites[i].Rect.Dy()/2,
-			}), sprites[i], sprites[i].Rect.Min, image.NewUniform(color.Alpha16{uint16(0xffff * (VelocityClones + 1 - j) / (VelocityClones + 1))}), image.ZP, draw.Over)
+			})
+			draw.DrawMask(img, r, sprites[i], sprites[i].Rect.Min, image.NewUniform(color.Alpha16{uint16(0xffff * (VelocityClones + 1 - j) / (VelocityClones + 1))}), image.ZP, draw.Over)
 
 			if j == 0 {
+				if r.Intersect(img.Rect).Empty() {
+					if r.Min.X < img.Rect.Min.X {
+						r = r.Add(image.Pt(img.Rect.Min.X-r.Min.X, 0))
+					}
+					if r.Max.X > img.Rect.Max.X {
+						r = r.Add(image.Pt(img.Rect.Max.X-r.Max.X, 0))
+					}
+					if r.Min.Y < img.Rect.Min.Y {
+						r = r.Add(image.Pt(0, img.Rect.Min.Y-r.Min.Y))
+					}
+					if r.Max.Y > img.Rect.Max.Y {
+						r = r.Add(image.Pt(0, img.Rect.Max.Y-r.Max.Y))
+					}
+
+					draw.DrawMask(img, r, sprites[i], sprites[i].Rect.Min, image.NewUniform(color.Alpha{0x40}), image.ZP, draw.Over)
+				}
+
 				target := state.Mans[i].Target
 				draw.Draw(img, image.Rect(0, 0, 1, 1).Add(image.Point{
 					X: int(target.X/PixelSize + offX),
