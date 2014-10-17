@@ -309,26 +309,32 @@ func Render(w wde.Window, me res.Man, state State) {
 		}
 	}
 
-	for i := range state.Mans {
-		pos := state.Mans[i].Position
-		draw.Draw(img, sprites[i].Rect.Sub(sprites[i].Rect.Min).Add(image.Point{
-			X: int(pos.X/PixelSize+offX) - sprites[i].Rect.Dx()/2,
-			Y: int(pos.Y/PixelSize+offY) - sprites[i].Rect.Dy()/2,
-		}), sprites[i], sprites[i].Rect.Min, draw.Over)
+	for j := VelocityClones; j >= 0; j-- {
+		for i := range state.Mans {
+			pos := state.Mans[i].Position
+			pos.X -= state.Mans[i].Velocity.X * int64(j) / TicksPerSecond
+			pos.Y -= state.Mans[i].Velocity.Y * int64(j) / TicksPerSecond
+			draw.DrawMask(img, sprites[i].Rect.Sub(sprites[i].Rect.Min).Add(image.Point{
+				X: int(pos.X/PixelSize+offX) - sprites[i].Rect.Dx()/2,
+				Y: int(pos.Y/PixelSize+offY) - sprites[i].Rect.Dy()/2,
+			}), sprites[i], sprites[i].Rect.Min, image.NewUniform(color.Alpha16{uint16(0xffff * (VelocityClones + 1 - j) / (VelocityClones + 1))}), image.ZP, draw.Over)
 
-		target := state.Mans[i].Target
-		draw.Draw(img, image.Rect(0, 0, 1, 1).Add(image.Point{
-			X: int(target.X/PixelSize + offX),
-			Y: int(target.Y/PixelSize + offY),
-		}), sprites[i], sprites[i].Rect.Min, draw.Over)
+			if j == 0 {
+				target := state.Mans[i].Target
+				draw.Draw(img, image.Rect(0, 0, 1, 1).Add(image.Point{
+					X: int(target.X/PixelSize + offX),
+					Y: int(target.Y/PixelSize + offY),
+				}), sprites[i], sprites[i].Rect.Min, draw.Over)
 
-		switch res.Man(i) {
-		case res.Man_Whip:
-			if state.WhipStop != 0 && state.WhipEnd != (Coord{}) {
-				gc.SetStrokeColor(color.Black)
-				gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize+offY))
-				gc.LineTo(float64(state.WhipEnd.X/PixelSize+offX), float64(state.WhipEnd.Y/PixelSize+offY))
-				gc.Stroke()
+				switch res.Man(i) {
+				case res.Man_Whip:
+					if state.WhipStop != 0 && state.WhipEnd != (Coord{}) {
+						gc.SetStrokeColor(color.Black)
+						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize+offY))
+						gc.LineTo(float64(state.WhipEnd.X/PixelSize+offX), float64(state.WhipEnd.Y/PixelSize+offY))
+						gc.Stroke()
+					}
+				}
 			}
 		}
 	}

@@ -14,6 +14,7 @@ import (
 )
 
 const (
+	VelocityClones          = 2
 	PixelSize               = 64
 	Gravity                 = PixelSize * 9         // per tick
 	TerminalVelocity        = PixelSize * 1000      // flat
@@ -126,6 +127,9 @@ func (u *Unit) UpdateMan(state *State, input *res.Packet, man res.Man) {
 			u.Acceleration.Y = -200 * PixelSize
 		} else {
 			u.Acceleration.Y = -350 * PixelSize
+		}
+		if man == res.Man_Whip {
+			u.Gravity = 0
 		}
 	} else {
 		u.Acceleration.Y = 0
@@ -308,12 +312,10 @@ func (state *State) Update(input *[res.Man_count]res.Packet) {
 					if state.WhipPull {
 						state.Mans[res.Man_Whip].Velocity.X += int64(float64(-dx) * speed)
 						state.Mans[res.Man_Whip].Velocity.Y += int64(float64(-dy) * speed)
-						state.Mans[res.Man_Whip].Velocity.Y -= Gravity * 20
 						state.Mans[res.Man_Whip].Gravity = -Gravity
 					} else if u != nil {
 						u.Velocity.X += int64(float64(dx) * speed)
 						u.Velocity.Y += int64(float64(dy) * speed)
-						u.Velocity.Y -= Gravity * 20
 					}
 				}
 			}
