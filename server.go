@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"github.com/Rnoadm/wdvn/res"
 	"net"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,13 +21,9 @@ func Listen(l net.Listener, world *World) {
 	state := make(chan State)
 	go Manager(ch, state, broadcast, world)
 
-	disconnect := make(chan res.Man, res.Man_count)
+	var connected [res.Man_count]uint64
 
-	for next_man := res.Man(0); next_man < res.Man_count; next_man++ {
-		disconnect <- next_man
-	}
-
-	for next_man := range disconnect {
+	for {
 		conn, err := l.Accept()
 		if err != nil {
 			panic(err)
@@ -35,17 +32,14 @@ func Listen(l net.Listener, world *World) {
 		ch := make(chan *res.Packet)
 		register <- ch
 
-		go Serve(conn, ch, broadcast, state, next_man, func(man res.Man) func() {
-			return func() {
-				disconnect <- man
-				go func() {
-					for _ = range ch {
-						// do nothing
-					}
-				}()
-				unregister <- ch
-			}
-		}(next_man))
+		go Serve(conn, ch, broadcast, state, &connected, func() {
+			go func() {
+				for _ = range ch {
+					// do nothing
+				}
+			}()
+			unregister <- ch
+		})
 	}
 }
 
@@ -74,13 +68,27 @@ func Multicast(broadcast <-chan *res.Packet, register, unregister <-chan chan<- 
 	}
 }
 
-func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech <-chan State, man res.Man, disconnect func()) {
+func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech <-chan State, connected *[res.Man_count]uint64, disconnect func()) {
 	defer disconnect()
 	defer conn.Close()
 
 	read, write := make(chan *res.Packet), make(chan *res.Packet)
 	go Read(conn, read)
 	go Write(conn, write)
+
+	var man res.Man
+	for man = 0; man < res.Man_count; man++ {
+		if atomic.CompareAndSwapUint64(&((*connected)[man]), 0, 1) {
+			break
+		}
+	}
+	if man == res.Man_count {
+		man = res.Man_Normal
+		atomic.AddUint64(&((*connected)[man]), 1)
+	}
+	defer func() {
+		atomic.AddUint64(&((*connected)[man]), ^uint64(0))
+	}()
 
 	write <- &res.Packet{
 		Type: res.Type_SelectMan.Enum(),
@@ -116,6 +124,13 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 			case res.Type_Ping:
 				lastPing = time.Now()
 
+			case res.Type_SelectMan:
+				if atomic.CompareAndSwapUint64(&((*connected)[p.GetMan()]), 0, 1) {
+					atomic.AddUint64(&((*connected)[man]), ^uint64(0))
+					man = p.GetMan()
+					go Send(write, p)
+				}
+
 			case res.Type_MoveMan:
 				go Send(out, &res.Packet{
 					Type: res.Type_MoveMan.Enum(),
@@ -127,6 +142,21 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 			case res.Type_Input:
 				p.Man = man.Enum()
 				go Send(out, p)
+
+			case res.Type_FullState:
+				state = <-statech
+
+				var buf bytes.Buffer
+
+				err := gob.NewEncoder(&buf).Encode(&state)
+				if err != nil {
+					panic(err)
+				}
+
+				go Send(write, &res.Packet{
+					Type: res.Type_FullState.Enum(),
+					Data: buf.Bytes(),
+				})
 			}
 
 		case <-ping.C:

@@ -146,6 +146,26 @@ func Client(conn net.Conn) {
 					sendInput(&res.Packet{
 						KeyRight: res.Button_pressed.Enum(),
 					})
+				case wde.KeyF1:
+					go Send(write, &res.Packet{
+						Type: res.Type_SelectMan.Enum(),
+						Man:  res.Man_Whip.Enum(),
+					})
+				case wde.KeyF2:
+					go Send(write, &res.Packet{
+						Type: res.Type_SelectMan.Enum(),
+						Man:  res.Man_Density.Enum(),
+					})
+				case wde.KeyF3:
+					go Send(write, &res.Packet{
+						Type: res.Type_SelectMan.Enum(),
+						Man:  res.Man_Vacuum.Enum(),
+					})
+				case wde.KeyF4:
+					go Send(write, &res.Packet{
+						Type: res.Type_SelectMan.Enum(),
+						Man:  res.Man_Normal.Enum(),
+					})
 				}
 			case wde.KeyTypedEvent:
 				// TODO
