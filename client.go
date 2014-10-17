@@ -6,6 +6,7 @@ import (
 	"code.google.com/p/goprotobuf/proto"
 	"encoding/gob"
 	"fmt"
+	"github.com/BenLubar/bindiff"
 	"github.com/Rnoadm/wdvn/res"
 	"github.com/skelterjohn/go.wde"
 	"image"
@@ -13,7 +14,6 @@ import (
 	"image/draw"
 	"image/png"
 	"net"
-	"time"
 )
 
 func Client(conn net.Conn) {
@@ -34,10 +34,13 @@ func Client(conn net.Conn) {
 	w.Show()
 
 	var (
-		me      res.Man
-		state   State
-		input   [res.Man_count]res.Packet
-		inputch = make(chan *res.Packet, 1)
+		me        res.Man
+		state     State
+		lastState []byte
+		lastTick  uint64
+		input     [res.Man_count]res.Packet
+		inputch   = make(chan *res.Packet, 1)
+		noState   = true
 	)
 	defer close(inputch)
 	releaseAll := &res.Packet{
@@ -48,7 +51,6 @@ func Client(conn net.Conn) {
 		KeyLeft:  res.Button_released.Enum(),
 		KeyRight: res.Button_released.Enum(),
 	}
-	state.World = FooLevel
 
 	sendInput := func(p *res.Packet) {
 		inputch <- p
@@ -85,8 +87,6 @@ func Client(conn net.Conn) {
 		}
 	}()
 
-	tick := time.Tick(time.Second / TicksPerSecond)
-
 	for {
 		select {
 		case <-repaintch:
@@ -105,13 +105,34 @@ func Client(conn net.Conn) {
 				me = p.GetMan()
 				Repaint()
 
-			case res.Type_MoveMan:
-				state.Mans[p.GetMan()].Position.X = p.GetX()
-				state.Mans[p.GetMan()].Position.Y = p.GetY()
-				Repaint()
-
 			case res.Type_Input:
 				proto.Merge(&input[p.GetMan()], p)
+
+			case res.Type_StateDiff:
+				if !noState {
+					if lastTick < p.GetTick() {
+						go Send(write, &res.Packet{
+							Type: res.Type_FullState.Enum(),
+						})
+						noState = true
+					} else if lastTick == p.GetTick() {
+						var err error
+						lastState, err = bindiff.Forward(lastState, p.GetData())
+						if err == nil {
+							var newState State
+							err = gob.NewDecoder(bytes.NewReader(lastState)).Decode(&newState)
+							if err == nil {
+								state = newState
+							}
+						}
+						if err != nil {
+							go Send(write, &res.Packet{
+								Type: res.Type_FullState.Enum(),
+							})
+							noState = true
+						}
+					}
+				}
 
 			case res.Type_FullState:
 				state = State{}
@@ -119,6 +140,7 @@ func Client(conn net.Conn) {
 				if err != nil {
 					panic(err)
 				}
+				lastState, lastTick, noState = p.GetData(), state.Tick, false
 				Repaint()
 			}
 
@@ -229,10 +251,6 @@ func Client(conn net.Conn) {
 			default:
 				panic(fmt.Errorf("unexpected event type %T in %#v", event, event))
 			}
-
-		case <-tick:
-			state.Update(&input)
-			Repaint()
 		}
 	}
 }
@@ -267,6 +285,10 @@ func init() {
 }
 
 func Render(w wde.Window, me res.Man, state State) {
+	if state.World == nil {
+		return
+	}
+
 	img := image.NewRGBA(w.Screen().Bounds())
 	gc := draw2d.NewGraphicContext(img)
 

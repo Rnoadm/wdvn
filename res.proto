@@ -1,8 +1,8 @@
 enum Type {
 	Ping      = 0;
 	SelectMan = 1;
-	MoveMan   = 2;
-	Input     = 3;
+	Input     = 2;
+	StateDiff = 3;
 	FullState = 4;
 }
 
@@ -20,11 +20,12 @@ enum Button {
 }
 
 message Packet {
-	required Type type  = 1; 
-	optional Man man    = 2;
-	optional sint64 x   = 3;
-	optional sint64 y   = 4;
-	optional bytes data = 5;
+	required Type type   = 1; 
+	optional Man man     = 2;
+	optional sint64 x    = 3;
+	optional sint64 y    = 4;
+	optional bytes data  = 5;
+	optional uint64 tick = 6;
 
 	optional Button mouse1    = 16;
 	optional Button mouse2    = 17;

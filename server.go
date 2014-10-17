@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"code.google.com/p/goprotobuf/proto"
 	"encoding/gob"
+	"github.com/BenLubar/bindiff"
 	"github.com/Rnoadm/wdvn/res"
 	"net"
 	"sync/atomic"
@@ -131,14 +132,6 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 					go Send(write, p)
 				}
 
-			case res.Type_MoveMan:
-				go Send(out, &res.Packet{
-					Type: res.Type_MoveMan.Enum(),
-					Man:  man.Enum(),
-					X:    p.X,
-					Y:    p.Y,
-				})
-
 			case res.Type_Input:
 				p.Man = man.Enum()
 				go Send(out, p)
@@ -183,6 +176,8 @@ func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Pack
 
 	tick := time.Tick(time.Second / TicksPerSecond)
 
+	var prev []byte
+
 	for {
 		select {
 		case p := <-in:
@@ -194,21 +189,23 @@ func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Pack
 		case out <- state:
 
 		case <-tick:
-			prev := state
+			t := state.Tick
 
 			state.Update(&input)
 
-			for i := range state.Mans {
-				if state.Mans[i].Position.X/PixelSize != prev.Mans[i].Position.X/PixelSize ||
-					state.Mans[i].Position.Y/PixelSize != prev.Mans[i].Position.Y/PixelSize {
-					go Send(broadcast, &res.Packet{
-						Type: res.Type_MoveMan.Enum(),
-						Man:  res.Man(i).Enum(),
-						X:    proto.Int64(state.Mans[i].Position.X),
-						Y:    proto.Int64(state.Mans[i].Position.Y),
-					})
-				}
+			var buf bytes.Buffer
+			err := gob.NewEncoder(&buf).Encode(&state)
+			if err != nil {
+				panic(err)
 			}
+			diff := bindiff.Diff(prev, buf.Bytes(), 5)
+			prev = buf.Bytes()
+
+			go Send(broadcast, &res.Packet{
+				Type: res.Type_StateDiff.Enum(),
+				Tick: proto.Uint64(t),
+				Data: diff,
+			})
 		}
 	}
 }
