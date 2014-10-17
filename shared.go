@@ -17,7 +17,6 @@ const (
 	VelocityClones          = 2
 	PixelSize               = 64
 	Gravity                 = PixelSize * 9         // per tick
-	TerminalVelocity        = PixelSize * 1000      // flat
 	MinimumVelocity         = PixelSize * PixelSize // unit stops moving if on ground
 	Friction                = 100                   // 1/Friction of the velocity is removed per tick
 	TicksPerSecond          = 100
@@ -93,13 +92,17 @@ func (u *Unit) IsMan(state *State) bool {
 
 func (u *Unit) UpdateMan(state *State, input *res.Packet, man res.Man) {
 	if u.Health <= 0 {
-		if state.Lives > 0 {
+		if state.Respawn[man] == 0 {
+			state.Respawn[man] = state.Tick + 10*TicksPerSecond
+		}
+		if state.Respawn[man] >= state.Tick && state.Lives > 0 {
 			state.Lives--
 			u.Health = DefaultHealth
 			u.Position = state.SpawnPoint
 			u.Gravity = 0
 			u.Velocity = Coord{}
 			u.Acceleration = Coord{}
+			state.Respawn[man] = 0
 		}
 		return
 	}
@@ -172,19 +175,6 @@ func (u *Unit) UpdatePhysics(state *State) {
 		u.Velocity.Y += Gravity + u.Gravity
 	}
 
-	if u.Velocity.X > TerminalVelocity {
-		u.Velocity.X = TerminalVelocity
-	}
-	if u.Velocity.X < -TerminalVelocity {
-		u.Velocity.X = -TerminalVelocity
-	}
-	if u.Velocity.Y > TerminalVelocity {
-		u.Velocity.Y = TerminalVelocity
-	}
-	if u.Velocity.Y < -TerminalVelocity {
-		u.Velocity.Y = -TerminalVelocity
-	}
-
 	if onGround &&
 		u.Velocity.X < MinimumVelocity &&
 		u.Velocity.X > -MinimumVelocity &&
@@ -241,7 +231,7 @@ func (u *Unit) UpdatePhysics(state *State) {
 		collide.Velocity.X, u.Velocity.X = u.Velocity.X, collide.Velocity.X
 		collide.Velocity.Y, u.Velocity.Y = u.Velocity.Y-Gravity, collide.Velocity.Y-Gravity
 	}
-	if pos := u.Position.Floor(PixelSize * 16); state.World.Outside(pos.X/16/PixelSize, pos.Y/16/PixelSize) > 20 {
+	if pos := u.Position.Floor(PixelSize * 16); state.World.Outside(pos.X/16/PixelSize, pos.Y/16/PixelSize) > 100 {
 		u.Hurt(state, nil, u.Health)
 	}
 }
@@ -250,6 +240,7 @@ type State struct {
 	Tick       uint64
 	Lives      uint64
 	Mans       [res.Man_count]Unit
+	Respawn    [res.Man_count]uint64
 	WhipStart  uint64
 	WhipStop   uint64
 	WhipEnd    Coord
@@ -310,12 +301,12 @@ func (state *State) Update(input *[res.Man_count]res.Packet) {
 				if dist > 0 && (u != nil || tr.HitWorld) {
 					speed := float64(WhipSpeedMin+(WhipSpeedMax-WhipSpeedMin)*(state.WhipStop-state.WhipStart)/(WhipTimeMax-WhipTimeMin)) / dist
 					if state.WhipPull {
-						state.Mans[res.Man_Whip].Velocity.X += int64(float64(-dx) * speed)
-						state.Mans[res.Man_Whip].Velocity.Y += int64(float64(-dy) * speed)
+						state.Mans[res.Man_Whip].Velocity.X = int64(float64(-dx) * speed)
+						state.Mans[res.Man_Whip].Velocity.Y = int64(float64(-dy) * speed)
 						state.Mans[res.Man_Whip].Gravity = -Gravity
 					} else if u != nil {
-						u.Velocity.X += int64(float64(dx) * speed)
-						u.Velocity.Y += int64(float64(dy) * speed)
+						u.Velocity.X = int64(float64(dx) * speed)
+						u.Velocity.Y = int64(float64(dy) * speed)
 					}
 				}
 			}
