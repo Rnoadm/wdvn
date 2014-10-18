@@ -5,6 +5,7 @@ import (
 	"flag"
 	"github.com/skelterjohn/go.wde"
 	_ "github.com/skelterjohn/go.wde/init"
+	"log"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -23,7 +24,9 @@ func main() {
 	flag.Parse()
 
 	if *flagProfile != "" {
-		go http.ListenAndServe(*flagProfile, nil)
+		go func() {
+			log.Println(http.ListenAndServe(*flagProfile, nil))
+		}()
 	}
 
 	if *flagEditor != "" {

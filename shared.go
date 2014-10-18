@@ -74,6 +74,10 @@ func (c Coord) Floor(i int64) Coord {
 	return Coord{c.X - x, c.Y - y}
 }
 
+func (c Coord) Zero() bool {
+	return c == Coord{}
+}
+
 type Unit struct {
 	Position     Coord
 	Velocity     Coord
@@ -85,11 +89,7 @@ type Unit struct {
 }
 
 func (u *Unit) OnGround(state *State) bool {
-	size := u.Size
-	if size == (Coord{}) {
-		size = DefaultSize
-	}
-	tr := state.Trace(u.Position, u.Position.Add(Coord{0, 1}), size, false)
+	tr := state.Trace(u.Position, u.Position.Add(Coord{0, 1}), u.Size, false)
 	tr.Collide(u)
 	return tr.End == u.Position
 }
@@ -204,31 +204,27 @@ func (u *Unit) UpdatePhysics(state *State) {
 		u.Velocity.Y = 0
 	}
 
-	size := u.Size
-	if size == (Coord{}) {
-		size = DefaultSize
-	}
-	tr := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, u.Velocity.Y / TicksPerSecond}), size, false)
+	tr := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, u.Velocity.Y / TicksPerSecond}), u.Size, false)
 	collide := tr.Collide(u)
 	if tr.End == u.Position {
-		if u.Velocity == (Coord{}) {
-			stuck := state.Trace(tr.End.Add(Coord{0, -size.Y}), tr.End, size, false)
+		if u.Velocity.Zero() {
+			stuck := state.Trace(tr.End.Add(Coord{0, -u.Size.Y}), tr.End, u.Size, false)
 			collide2 := stuck.Collide(u)
 			if stuck.End != tr.End {
 				tr, collide = stuck, collide2
 			}
 		} else {
-			stuck := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, 0}), size, false)
+			stuck := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, 0}), u.Size, false)
 			collide2 := stuck.Collide(u)
 			if stuck.End != tr.End {
 				tr, collide = stuck, collide2
 			} else {
-				stuck = state.Trace(u.Position, u.Position.Add(Coord{0, u.Velocity.Y / TicksPerSecond}), size, false)
+				stuck = state.Trace(u.Position, u.Position.Add(Coord{0, u.Velocity.Y / TicksPerSecond}), u.Size, false)
 				collide2 = stuck.Collide(u)
 				if stuck.End != tr.End {
 					tr, collide = stuck, collide2
 				} else {
-					stuck = state.Trace(tr.End.Add(Coord{0, -size.Y}), tr.End, size, false)
+					stuck = state.Trace(tr.End.Add(Coord{0, -u.Size.Y}), tr.End, u.Size, false)
 					collide2 = stuck.Collide(u)
 					if stuck.End != tr.End {
 						tr, collide = stuck, collide2
@@ -429,11 +425,7 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 			return -1, 0, 0
 		}
 
-		size := u.Size
-		if size == (Coord{}) {
-			size = DefaultSize
-		}
-		mins, maxs := size.Hull()
+		mins, maxs := u.Size.Hull()
 		mins = mins.Add(u.Position)
 		maxs = maxs.Add(u.Position)
 

@@ -81,19 +81,19 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 	var man res.Man
 	// check for an empty slot
 	for man = 0; man < res.Man_count; man++ {
-		if atomic.CompareAndSwapUint64(&((*connected)[man]), 0, 1) {
+		if atomic.CompareAndSwapUint64(&(*connected)[man], 0, 1) {
 			break
 		}
 	}
 	// multiple people control normal man as a last resort
 	if man == res.Man_count {
 		man = res.Man_Normal
-		atomic.AddUint64(&((*connected)[man]), 1)
+		atomic.AddUint64(&(*connected)[man], 1)
 	}
 	pman := man.Enum()
 	// leave the character when we disconnect
 	defer func() {
-		atomic.AddUint64(&((*connected)[man]), ^uint64(0))
+		atomic.AddUint64(&(*connected)[man], ^uint64(0))
 	}()
 
 	log.Println(conn.RemoteAddr(), "connected for", man)
@@ -140,10 +140,10 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 				lastPing = time.Now()
 
 			case res.Type_SelectMan:
-				if atomic.CompareAndSwapUint64(&((*connected)[p.GetMan()]), 0, 1) {
+				if atomic.CompareAndSwapUint64(&(*connected)[p.GetMan()], 0, 1) {
 					log.Println(conn.RemoteAddr(), "switched from", man, "to", p.GetMan())
 
-					atomic.AddUint64(&((*connected)[man]), ^uint64(0))
+					atomic.AddUint64(&(*connected)[man], ^uint64(0))
 					man, pman = p.GetMan(), p.Man
 					go Send(write, p)
 				}
