@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"github.com/BenLubar/bindiff"
 	"github.com/Rnoadm/wdvn/res"
+	"log"
 	"net"
 	"sync/atomic"
 	"time"
@@ -17,10 +18,9 @@ func Listen(l net.Listener, world *World) {
 	broadcast, register, unregister := make(chan *res.Packet), make(chan chan<- *res.Packet), make(chan chan<- *res.Packet)
 	go Multicast(broadcast, register, unregister)
 
-	ch := make(chan *res.Packet)
-	register <- ch
+	input := make(chan *res.Packet)
 	state := make(chan State)
-	go Manager(ch, state, broadcast, world)
+	go Manager(input, state, broadcast, world)
 
 	var connected [res.Man_count]uint64
 
@@ -33,7 +33,7 @@ func Listen(l net.Listener, world *World) {
 		ch := make(chan *res.Packet)
 		register <- ch
 
-		go Serve(conn, ch, broadcast, state, &connected, func() {
+		go Serve(conn, ch, broadcast, state, input, &connected, func() {
 			go func() {
 				for _ = range ch {
 					// do nothing
@@ -45,31 +45,26 @@ func Listen(l net.Listener, world *World) {
 }
 
 func Multicast(broadcast <-chan *res.Packet, register, unregister <-chan chan<- *res.Packet) {
-	var writers []chan<- *res.Packet
+	writers := make(map[chan<- *res.Packet]struct{})
 
 	for {
 		select {
 		case ch := <-register:
-			writers = append(writers, ch)
+			writers[ch] = struct{}{}
 
 		case ch := <-unregister:
-			for i, ch2 := range writers {
-				if ch == ch2 {
-					writers = append(writers[:i], writers[i+1:]...)
-					close(ch)
-					break
-				}
-			}
+			delete(writers, ch)
+			close(ch)
 
 		case packet := <-broadcast:
-			for _, ch := range writers {
+			for ch := range writers {
 				ch <- packet
 			}
 		}
 	}
 }
 
-func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech <-chan State, connected *[res.Man_count]uint64, disconnect func()) {
+func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech <-chan State, input chan<- *res.Packet, connected *[res.Man_count]uint64, disconnect func()) {
 	defer disconnect()
 	defer conn.Close()
 
@@ -78,26 +73,33 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 	go Write(conn, write)
 
 	var man res.Man
+	// check for an empty slot
 	for man = 0; man < res.Man_count; man++ {
 		if atomic.CompareAndSwapUint64(&((*connected)[man]), 0, 1) {
 			break
 		}
 	}
+	// multiple people control normal man as a last resort
 	if man == res.Man_count {
 		man = res.Man_Normal
 		atomic.AddUint64(&((*connected)[man]), 1)
 	}
+	// leave the character when we disconnect
 	defer func() {
 		atomic.AddUint64(&((*connected)[man]), ^uint64(0))
 	}()
 
+	log.Println(conn.RemoteAddr(), "connected for", man)
+
+	// tell the client which man they are
 	write <- &res.Packet{
 		Type: res.Type_SelectMan.Enum(),
 		Man:  man.Enum(),
 	}
 
-	state := <-statech
+	// send full state to the client
 	{
+		state := <-statech
 		var buf bytes.Buffer
 
 		err := gob.NewEncoder(&buf).Encode(&state)
@@ -120,13 +122,20 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 		case p := <-in:
 			write <- p
 
-		case p := <-read:
+		case p, ok := <-read:
+			if !ok {
+				log.Println(conn.RemoteAddr(), man, "disconnected: read error")
+				return
+			}
+
 			switch p.GetType() {
 			case res.Type_Ping:
 				lastPing = time.Now()
 
 			case res.Type_SelectMan:
 				if atomic.CompareAndSwapUint64(&((*connected)[p.GetMan()]), 0, 1) {
+					log.Println(conn.RemoteAddr(), "switched from", man, "to", p.GetMan())
+
 					atomic.AddUint64(&((*connected)[man]), ^uint64(0))
 					man = p.GetMan()
 					go Send(write, p)
@@ -134,10 +143,12 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 
 			case res.Type_Input:
 				p.Man = man.Enum()
-				go Send(out, p)
+				go Send(input, p)
 
 			case res.Type_FullState:
-				state = <-statech
+				log.Println(conn.RemoteAddr(), "requested full state update")
+
+				state := <-statech
 
 				var buf bytes.Buffer
 
@@ -158,6 +169,7 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 			})
 
 			if time.Since(lastPing) > time.Second*5 {
+				log.Println(conn.RemoteAddr(), man, "disconnected: ping timeout")
 				return
 			}
 		}
