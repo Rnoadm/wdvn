@@ -30,6 +30,7 @@ const (
 	WhipAntiGravityDuration = TicksPerSecond / 2
 	DefaultLives            = 100
 	DefaultHealth           = 10
+	RespawnTime             = 10 * TicksPerSecond
 )
 
 var DefaultSize = Coord{16 * PixelSize, 16 * PixelSize}
@@ -93,9 +94,9 @@ func (u *Unit) IsMan(state *State) bool {
 func (u *Unit) UpdateMan(state *State, input *res.Packet, man res.Man) {
 	if u.Health <= 0 {
 		if state.Respawn[man] == 0 {
-			state.Respawn[man] = state.Tick + 10*TicksPerSecond
+			state.Respawn[man] = state.Tick + RespawnTime
 		}
-		if state.Respawn[man] >= state.Tick && state.Lives > 0 {
+		if state.Respawn[man] <= state.Tick && state.Lives > 0 {
 			state.Lives--
 			u.Health = DefaultHealth
 			u.Position = state.SpawnPoint

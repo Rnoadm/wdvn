@@ -318,6 +318,9 @@ func Render(w wde.Window, me res.Man, state State) {
 				X: int(pos.X/PixelSize+offX) - sprites[i].Rect.Dx()/2,
 				Y: int(pos.Y/PixelSize+offY) - sprites[i].Rect.Dy()/2,
 			})
+			if state.Respawn[i] != 0 {
+				r.Min.Y += r.Dy() - r.Dy()*int(state.Respawn[i]-state.Tick)/RespawnTime
+			}
 			draw.DrawMask(img, r, sprites[i], sprites[i].Rect.Min, image.NewUniform(color.Alpha16{uint16(0xffff * (VelocityClones + 1 - j) / (VelocityClones + 1))}), image.ZP, draw.Over)
 
 			if j == 0 {
@@ -355,6 +358,10 @@ func Render(w wde.Window, me res.Man, state State) {
 				}
 			}
 		}
+	}
+
+	if state.Respawn[me] != 0 {
+		draw.Draw(img, img.Rect, image.NewUniform(color.RGBA{64, 64, 64, 64}), image.ZP, draw.Over)
 	}
 
 	w.Screen().CopyRGBA(img, img.Rect)
