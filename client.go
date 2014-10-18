@@ -44,12 +44,12 @@ func Client(conn net.Conn) {
 	)
 	defer close(inputch)
 	releaseAll := &res.Packet{
-		Mouse1:   res.Button_released.Enum(),
-		Mouse2:   res.Button_released.Enum(),
-		KeyUp:    res.Button_released.Enum(),
-		KeyDown:  res.Button_released.Enum(),
-		KeyLeft:  res.Button_released.Enum(),
-		KeyRight: res.Button_released.Enum(),
+		Mouse1:   Button_released,
+		Mouse2:   Button_released,
+		KeyUp:    Button_released,
+		KeyDown:  Button_released,
+		KeyLeft:  Button_released,
+		KeyRight: Button_released,
 	}
 
 	sendInput := func(p *res.Packet) {
@@ -72,7 +72,7 @@ func Client(conn net.Conn) {
 
 				if p == nil {
 					p = &res.Packet{
-						Type: res.Type_Input.Enum(),
+						Type: Type_Input,
 					}
 				}
 				if v == nil {
@@ -112,7 +112,7 @@ func Client(conn net.Conn) {
 				if !noState {
 					if lastTick < p.GetTick() {
 						go Send(write, &res.Packet{
-							Type: res.Type_FullState.Enum(),
+							Type: Type_FullState,
 						})
 						noState = true
 					} else if lastTick == p.GetTick() {
@@ -127,7 +127,7 @@ func Client(conn net.Conn) {
 						}
 						if err != nil {
 							go Send(write, &res.Packet{
-								Type: res.Type_FullState.Enum(),
+								Type: Type_FullState,
 							})
 							noState = true
 						}
@@ -154,39 +154,39 @@ func Client(conn net.Conn) {
 				switch e.Key {
 				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow, wde.KeySpace:
 					sendInput(&res.Packet{
-						KeyUp: res.Button_pressed.Enum(),
+						KeyUp: Button_pressed,
 					})
 				case wde.KeyS, wde.KeyPadDown, wde.KeyDownArrow:
 					sendInput(&res.Packet{
-						KeyDown: res.Button_pressed.Enum(),
+						KeyDown: Button_pressed,
 					})
 				case wde.KeyA, wde.KeyPadLeft, wde.KeyLeftArrow:
 					sendInput(&res.Packet{
-						KeyLeft: res.Button_pressed.Enum(),
+						KeyLeft: Button_pressed,
 					})
 				case wde.KeyD, wde.KeyPadRight, wde.KeyRightArrow:
 					sendInput(&res.Packet{
-						KeyRight: res.Button_pressed.Enum(),
+						KeyRight: Button_pressed,
 					})
 				case wde.KeyF1:
 					go Send(write, &res.Packet{
-						Type: res.Type_SelectMan.Enum(),
-						Man:  res.Man_Whip.Enum(),
+						Type: Type_SelectMan,
+						Man:  Man_Whip,
 					})
 				case wde.KeyF2:
 					go Send(write, &res.Packet{
-						Type: res.Type_SelectMan.Enum(),
-						Man:  res.Man_Density.Enum(),
+						Type: Type_SelectMan,
+						Man:  Man_Density,
 					})
 				case wde.KeyF3:
 					go Send(write, &res.Packet{
-						Type: res.Type_SelectMan.Enum(),
-						Man:  res.Man_Vacuum.Enum(),
+						Type: Type_SelectMan,
+						Man:  Man_Vacuum,
 					})
 				case wde.KeyF4:
 					go Send(write, &res.Packet{
-						Type: res.Type_SelectMan.Enum(),
-						Man:  res.Man_Normal.Enum(),
+						Type: Type_SelectMan,
+						Man:  Man_Normal,
 					})
 				}
 			case wde.KeyTypedEvent:
@@ -195,41 +195,41 @@ func Client(conn net.Conn) {
 				switch e.Key {
 				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow, wde.KeySpace:
 					sendInput(&res.Packet{
-						KeyUp: res.Button_released.Enum(),
+						KeyUp: Button_released,
 					})
 				case wde.KeyS, wde.KeyPadDown, wde.KeyDownArrow:
 					sendInput(&res.Packet{
-						KeyDown: res.Button_released.Enum(),
+						KeyDown: Button_released,
 					})
 				case wde.KeyA, wde.KeyPadLeft, wde.KeyLeftArrow:
 					sendInput(&res.Packet{
-						KeyLeft: res.Button_released.Enum(),
+						KeyLeft: Button_released,
 					})
 				case wde.KeyD, wde.KeyPadRight, wde.KeyRightArrow:
 					sendInput(&res.Packet{
-						KeyRight: res.Button_released.Enum(),
+						KeyRight: Button_released,
 					})
 				}
 			case wde.MouseDownEvent:
 				switch e.Which {
 				case wde.LeftButton:
 					sendInput(&res.Packet{
-						Mouse1: res.Button_pressed.Enum(),
+						Mouse1: Button_pressed,
 					})
 				case wde.RightButton:
 					sendInput(&res.Packet{
-						Mouse2: res.Button_pressed.Enum(),
+						Mouse2: Button_pressed,
 					})
 				}
 			case wde.MouseUpEvent:
 				switch e.Which {
 				case wde.LeftButton:
 					sendInput(&res.Packet{
-						Mouse1: res.Button_released.Enum(),
+						Mouse1: Button_released,
 					})
 				case wde.RightButton:
 					sendInput(&res.Packet{
-						Mouse2: res.Button_released.Enum(),
+						Mouse2: Button_released,
 					})
 				}
 			case wde.MouseEnteredEvent:
@@ -255,8 +255,13 @@ func Client(conn net.Conn) {
 	}
 }
 
-var sprites [res.Man_count]*image.RGBA
-var terrain []*image.RGBA
+var (
+	sprites  [res.Man_count]*image.RGBA
+	terrain  []*image.RGBA
+	fade     [VelocityClones + 1]*image.Uniform
+	deadfade *image.Uniform
+	deadhaze *image.Uniform
+)
 
 func init() {
 	src, err := png.Decode(bytes.NewReader(res.MansPng))
@@ -282,6 +287,13 @@ func init() {
 	for x := dst.Rect.Min.X; x < dst.Rect.Max.X; x += dst.Rect.Dy() {
 		terrain = append(terrain, dst.SubImage(image.Rect(x, dst.Rect.Min.Y, x+dst.Rect.Dy(), dst.Rect.Max.Y)).(*image.RGBA))
 	}
+
+	for i := range fade {
+		fade[i] = image.NewUniform(color.Alpha16{uint16(0xffff * (len(fade) - i) / len(fade))})
+	}
+
+	deadfade = image.NewUniform(color.Alpha{0x40})
+	deadhaze = image.NewUniform(color.RGBA{64, 64, 64, 64})
 }
 
 func Render(w wde.Window, me res.Man, state State) {
@@ -321,7 +333,7 @@ func Render(w wde.Window, me res.Man, state State) {
 			if state.Respawn[i] != 0 {
 				r.Min.Y += r.Dy() - r.Dy()*int(state.Respawn[i]-state.Tick)/RespawnTime
 			}
-			draw.DrawMask(img, r, sprites[i], sprites[i].Rect.Min, image.NewUniform(color.Alpha16{uint16(0xffff * (VelocityClones + 1 - j) / (VelocityClones + 1))}), image.ZP, draw.Over)
+			draw.DrawMask(img, r, sprites[i], sprites[i].Rect.Min, fade[j], image.ZP, draw.Over)
 
 			if j == 0 {
 				if r.Intersect(img.Rect).Empty() {
@@ -338,7 +350,7 @@ func Render(w wde.Window, me res.Man, state State) {
 						r = r.Add(image.Pt(0, img.Rect.Max.Y-r.Max.Y))
 					}
 
-					draw.DrawMask(img, r, sprites[i], sprites[i].Rect.Min, image.NewUniform(color.Alpha{0x40}), image.ZP, draw.Over)
+					draw.DrawMask(img, r, sprites[i], sprites[i].Rect.Min, deadfade, image.ZP, draw.Over)
 				}
 
 				target := state.Mans[i].Target
@@ -361,7 +373,7 @@ func Render(w wde.Window, me res.Man, state State) {
 	}
 
 	if state.Respawn[me] != 0 {
-		draw.Draw(img, img.Rect, image.NewUniform(color.RGBA{64, 64, 64, 64}), image.ZP, draw.Over)
+		draw.Draw(img, img.Rect, deadhaze, image.ZP, draw.Over)
 	}
 
 	w.Screen().CopyRGBA(img, img.Rect)

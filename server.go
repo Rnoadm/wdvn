@@ -84,6 +84,7 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 		man = res.Man_Normal
 		atomic.AddUint64(&((*connected)[man]), 1)
 	}
+	pman := man.Enum()
 	// leave the character when we disconnect
 	defer func() {
 		atomic.AddUint64(&((*connected)[man]), ^uint64(0))
@@ -93,8 +94,8 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 
 	// tell the client which man they are
 	write <- &res.Packet{
-		Type: res.Type_SelectMan.Enum(),
-		Man:  man.Enum(),
+		Type: Type_SelectMan,
+		Man:  pman,
 	}
 
 	// send full state to the client
@@ -108,7 +109,7 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 		}
 
 		write <- &res.Packet{
-			Type: res.Type_FullState.Enum(),
+			Type: Type_FullState,
 			Data: buf.Bytes(),
 		}
 	}
@@ -137,12 +138,12 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 					log.Println(conn.RemoteAddr(), "switched from", man, "to", p.GetMan())
 
 					atomic.AddUint64(&((*connected)[man]), ^uint64(0))
-					man = p.GetMan()
+					man, pman = p.GetMan(), p.Man
 					go Send(write, p)
 				}
 
 			case res.Type_Input:
-				p.Man = man.Enum()
+				p.Man = pman
 				go Send(input, p)
 
 			case res.Type_FullState:
@@ -158,14 +159,14 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 				}
 
 				go Send(write, &res.Packet{
-					Type: res.Type_FullState.Enum(),
+					Type: Type_FullState,
 					Data: buf.Bytes(),
 				})
 			}
 
 		case <-ping.C:
 			go Send(out, &res.Packet{
-				Type: res.Type_Ping.Enum(),
+				Type: Type_Ping,
 			})
 
 			if time.Since(lastPing) > time.Second*5 {
@@ -214,7 +215,7 @@ func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Pack
 			prev = buf.Bytes()
 
 			go Send(broadcast, &res.Packet{
-				Type: res.Type_StateDiff.Enum(),
+				Type: Type_StateDiff,
 				Tick: proto.Uint64(t),
 				Data: diff,
 			})

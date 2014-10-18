@@ -6,8 +6,9 @@ import (
 	"github.com/skelterjohn/go.wde"
 	_ "github.com/skelterjohn/go.wde/init"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
-	"runtime/pprof"
 )
 
 var (
@@ -15,19 +16,14 @@ var (
 	flagAddress = flag.String("addr", "", "address to connect to, like \"192.168.1.100:7777\"")
 	flagLevel   = flag.String("level", "", "filename of level to play")
 	flagEditor  = flag.String("edit", "", "filename of level to edit")
-	flagCPUProf = flag.String("cpuprofile", "", "developer use only, filename")
+	flagProfile = flag.String("prof", "", "start a pprof server for developer use")
 )
 
 func main() {
 	flag.Parse()
 
-	if *flagCPUProf != "" {
-		f, err := os.Create(*flagCPUProf)
-		if err != nil {
-			panic(err)
-		}
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
+	if *flagProfile != "" {
+		go http.ListenAndServe(*flagProfile, nil)
 	}
 
 	if *flagEditor != "" {

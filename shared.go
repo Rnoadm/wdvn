@@ -35,6 +35,22 @@ const (
 
 var DefaultSize = Coord{16 * PixelSize, 16 * PixelSize}
 
+var (
+	Type_Ping      = res.Type_Ping.Enum()
+	Type_SelectMan = res.Type_SelectMan.Enum()
+	Type_Input     = res.Type_Input.Enum()
+	Type_StateDiff = res.Type_StateDiff.Enum()
+	Type_FullState = res.Type_FullState.Enum()
+
+	Man_Whip    = res.Man_Whip.Enum()
+	Man_Density = res.Man_Density.Enum()
+	Man_Vacuum  = res.Man_Vacuum.Enum()
+	Man_Normal  = res.Man_Normal.Enum()
+
+	Button_released = res.Button_released.Enum()
+	Button_pressed  = res.Button_pressed.Enum()
+)
+
 type Coord struct{ X, Y int64 }
 
 func (c Coord) Add(o Coord) Coord {
@@ -472,15 +488,15 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 func Read(conn net.Conn, packets chan<- *res.Packet) {
 	defer close(packets)
 
+	var l [64 / 8]byte
 	for {
-		var l uint64
-		err := binary.Read(conn, binary.LittleEndian, &l)
+		_, err := io.ReadFull(conn, l[:])
 		if err != nil {
 			log.Println(err)
 			return
 		}
 
-		b := make([]byte, l)
+		b := make([]byte, binary.LittleEndian.Uint64(l[:]))
 		_, err = io.ReadFull(conn, b)
 		if err != nil {
 			log.Println(err)
@@ -499,6 +515,7 @@ func Read(conn net.Conn, packets chan<- *res.Packet) {
 }
 
 func Write(conn net.Conn, packets <-chan *res.Packet) {
+	var l [64 / 8]byte
 	for p := range packets {
 		b, err := proto.Marshal(p)
 		if err != nil {
@@ -506,14 +523,18 @@ func Write(conn net.Conn, packets <-chan *res.Packet) {
 			return
 		}
 
-		l := uint64(len(b))
+		binary.LittleEndian.PutUint64(l[:], uint64(len(b)))
 
-		err = binary.Write(conn, binary.LittleEndian, &l)
+		n, err := conn.Write(l[:])
+		if err == nil && n != len(l) {
+			err = io.ErrShortWrite
+		}
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		n, err := conn.Write(b)
+
+		n, err = conn.Write(b)
 		if err == nil && n != len(b) {
 			err = io.ErrShortWrite
 		}
