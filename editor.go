@@ -22,7 +22,6 @@ func Editor(filename string) {
 	w.Show()
 
 	var (
-		size       = int64(terrain[0].Rect.Dy())
 		solidity   bool
 		world      World
 		offX, offY int64
@@ -54,19 +53,19 @@ func Editor(filename string) {
 		offX = int64(img.Rect.Dx()/2) - offX
 		offY = int64(img.Rect.Dy()/2) - offY
 
-		min, max := Coord{-size, -size}, Coord{int64(img.Rect.Dx()) + size, int64(img.Rect.Dy()) + size}
-		min = min.Sub(Coord{offX, offY}).Floor(size)
-		max = max.Sub(Coord{offX, offY}).Floor(size)
+		min, max := Coord{-TileSize, -TileSize}, Coord{int64(img.Rect.Dx()) + TileSize, int64(img.Rect.Dy()) + TileSize}
+		min = min.Sub(Coord{offX, offY}).Floor(TileSize)
+		max = max.Sub(Coord{offX, offY}).Floor(TileSize)
 
-		for x := min.X; x < max.X; x += size {
-			for y := min.Y; y < max.Y; y += size {
+		for x := min.X; x < max.X; x += TileSize {
+			for y := min.Y; y < max.Y; y += TileSize {
 				var i image.Image
 				if solidity {
-					i = solid[world.Solid(x/size, y/size)]
+					i = solid[world.Solid(x/TileSize, y/TileSize)]
 				} else {
-					i = terrain[world.Tile(x/size, y/size)]
+					i = terrain[world.Tile(x/TileSize, y/TileSize)]
 				}
-				r := image.Rect(int(x+offX), int(y+offY), int(x+offX+size), int(y+offY+size))
+				r := image.Rect(int(x+offX), int(y+offY), int(x+offX+TileSize), int(y+offY+TileSize))
 				draw.Draw(img, r, i, i.Bounds().Min, draw.Src)
 			}
 		}
@@ -108,9 +107,9 @@ func Editor(filename string) {
 		case wde.MouseDownEvent:
 			width, height := w.Size()
 			c := Coord{offX + int64(e.Where.X-width/2), offY + int64(e.Where.Y-height/2)}
-			c = c.Floor(size)
-			world.ensureTileExists(c.X/size, c.Y/size)
-			i, _ := world.index(c.X/size, c.Y/size)
+			c = c.Floor(TileSize)
+			world.ensureTileExists(c.X/TileSize, c.Y/TileSize)
+			i, _ := world.index(c.X/TileSize, c.Y/TileSize)
 
 			if solidity {
 				world.Tiles[i].Solid = !world.Tiles[i].Solid

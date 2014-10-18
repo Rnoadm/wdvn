@@ -284,6 +284,9 @@ func init() {
 	}
 	dst = image.NewRGBA(src.Bounds())
 	draw.Draw(dst, dst.Rect, src, dst.Rect.Min, draw.Src)
+	if dst.Rect.Dy() != TileSize {
+		panic("tile size mismatch")
+	}
 	for x := dst.Rect.Min.X; x < dst.Rect.Max.X; x += dst.Rect.Dy() {
 		terrain = append(terrain, dst.SubImage(image.Rect(x, dst.Rect.Min.Y, x+dst.Rect.Dy(), dst.Rect.Max.Y)).(*image.RGBA))
 	}
@@ -304,19 +307,28 @@ func Render(w wde.Window, me res.Man, state State) {
 	img := image.NewRGBA(w.Screen().Bounds())
 	gc := draw2d.NewGraphicContext(img)
 
+	var lives string
+	if state.Lives > 1 {
+		lives = fmt.Sprintf("%d Mans", state.Lives)
+	} else if state.Lives == 1 {
+		lives = "1 Man!"
+	} else {
+		lives = "No Mans!!"
+	}
+	left, top, _, _ := gc.GetStringBounds(lives)
+	gc.FillStringAt(lives, 2-left, 2-top)
+
 	offX := int64(img.Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
 	offY := int64(img.Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
 
-	size := int64(terrain[0].Rect.Dy())
+	min, max := Coord{-TileSize, -TileSize}, Coord{int64(img.Rect.Dx()) + TileSize, int64(img.Rect.Dy()) + TileSize}
+	min = min.Sub(Coord{offX, offY}).Floor(TileSize)
+	max = max.Sub(Coord{offX, offY}).Floor(TileSize)
 
-	min, max := Coord{-size, -size}, Coord{int64(img.Rect.Dx()) + size, int64(img.Rect.Dy()) + size}
-	min = min.Sub(Coord{offX, offY}).Floor(size)
-	max = max.Sub(Coord{offX, offY}).Floor(size)
-
-	for x := min.X; x < max.X; x += size {
-		for y := min.Y; y < max.Y; y += size {
-			t := terrain[state.World.Tile(x/size, y/size)]
-			r := image.Rect(int(x+offX), int(y+offY), int(x+offX+size), int(y+offY+size))
+	for x := min.X; x < max.X; x += TileSize {
+		for y := min.Y; y < max.Y; y += TileSize {
+			t := terrain[state.World.Tile(x/TileSize, y/TileSize)]
+			r := image.Rect(int(x+offX), int(y+offY), int(x+offX+TileSize), int(y+offY+TileSize))
 			draw.Draw(img, r, t, t.Rect.Min, draw.Src)
 		}
 	}

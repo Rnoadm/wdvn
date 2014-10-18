@@ -15,6 +15,7 @@ import (
 
 const (
 	VelocityClones          = 2
+	TileSize                = 16
 	PixelSize               = 64
 	Gravity                 = PixelSize * 9         // per tick
 	MinimumVelocity         = PixelSize * PixelSize // unit stops moving if on ground
@@ -26,7 +27,7 @@ const (
 	WhipDamageMax           = 5
 	WhipSpeedMin            = 64 * PixelSize
 	WhipSpeedMax            = 512 * PixelSize
-	WhipDistance            = 4 * 16 * PixelSize
+	WhipDistance            = 4 * TileSize * PixelSize
 	WhipAntiGravityDuration = TicksPerSecond / 2
 	DefaultLives            = 100
 	DefaultHealth           = 10
@@ -244,7 +245,7 @@ func (u *Unit) UpdatePhysics(state *State) {
 		collide.Velocity.X, u.Velocity.X = u.Velocity.X, collide.Velocity.X
 		collide.Velocity.Y, u.Velocity.Y = u.Velocity.Y-Gravity, collide.Velocity.Y-Gravity
 	}
-	if pos := u.Position.Floor(PixelSize * 16); state.World.Outside(pos.X/16/PixelSize, pos.Y/16/PixelSize) > 100 {
+	if pos := u.Position.Floor(PixelSize * TileSize); state.World.Outside(pos.X/TileSize/PixelSize, pos.Y/TileSize/PixelSize) > 100 {
 		u.Hurt(state, nil, u.Health)
 	}
 }
@@ -294,7 +295,7 @@ func (state *State) Update(input *[res.Man_count]res.Packet) {
 			if state.WhipStart < state.WhipStop-WhipTimeMax {
 				state.WhipStart = state.WhipStop - WhipTimeMax
 			}
-			dist2 := float64(4 * 16 * PixelSize)
+			dist2 := float64(4 * TileSize * PixelSize)
 			state.WhipEnd = Coord{}
 			if state.WhipStart < state.WhipStop-WhipTimeMin {
 				stop.X = start.X + int64(float64(delta.X)*dist2/dist1)
@@ -448,13 +449,13 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 	} else {
 		bounds_max.Y += delta.Y
 	}
-	bounds_min = bounds_min.Floor(16 * PixelSize)
-	bounds_max = bounds_max.Floor(16 * PixelSize).Add(Coord{16 * PixelSize, 16 * PixelSize})
+	bounds_min = bounds_min.Floor(TileSize * PixelSize)
+	bounds_max = bounds_max.Floor(TileSize * PixelSize).Add(Coord{TileSize * PixelSize, TileSize * PixelSize})
 
-	for x := bounds_min.X; x <= bounds_max.X; x += 16 * PixelSize {
-		for y := bounds_min.Y; y <= bounds_max.Y; y += 16 * PixelSize {
-			if state.World.Solid(x/16/PixelSize, y/16/PixelSize) {
-				dist, dx, dy := traceAABB(Coord{x, y}, Coord{x + 16*PixelSize, y + 16*PixelSize})
+	for x := bounds_min.X; x <= bounds_max.X; x += TileSize * PixelSize {
+		for y := bounds_min.Y; y <= bounds_max.Y; y += TileSize * PixelSize {
+			if state.World.Solid(x/TileSize/PixelSize, y/TileSize/PixelSize) {
+				dist, dx, dy := traceAABB(Coord{x, y}, Coord{x + TileSize*PixelSize, y + TileSize*PixelSize})
 				if dist >= 0 && dist < maxDist {
 					maxDist = dist
 					tr.HitWorld = true
