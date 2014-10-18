@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"code.google.com/p/draw2d/draw2d"
+	"code.google.com/p/freetype-go/freetype/truetype"
 	"code.google.com/p/goprotobuf/proto"
 	"encoding/gob"
 	"fmt"
@@ -123,6 +124,8 @@ func Client(conn net.Conn) {
 							err = gob.NewDecoder(bytes.NewReader(lastState)).Decode(&newState)
 							if err == nil {
 								state = newState
+								lastTick = state.Tick
+								Repaint()
 							}
 						}
 						if err != nil {
@@ -264,6 +267,28 @@ var (
 )
 
 func init() {
+	const FontStyleBoldItalic = draw2d.FontStyleBold | draw2d.FontStyleItalic
+	for d, b := range map[draw2d.FontData][]byte{
+		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleBold}:    res.LuximbTtf,
+		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilyMono, Style: FontStyleBoldItalic}:     res.LuximbiTtf,
+		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleNormal}:  res.LuximrTtf,
+		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleItalic}:  res.LuximriTtf,
+		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySerif, Style: draw2d.FontStyleBold}:   res.LuxirbTtf,
+		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySerif, Style: FontStyleBoldItalic}:    res.LuxirbiTtf,
+		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySerif, Style: draw2d.FontStyleNormal}: res.LuxirrTtf,
+		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySerif, Style: draw2d.FontStyleItalic}: res.LuxirriTtf,
+		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySans, Style: draw2d.FontStyleBold}:    res.LuxisbTtf,
+		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySans, Style: FontStyleBoldItalic}:     res.LuxisbiTtf,
+		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySans, Style: draw2d.FontStyleNormal}:  res.LuxisrTtf,
+		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySans, Style: draw2d.FontStyleItalic}:  res.LuxisriTtf,
+	} {
+		font, err := truetype.Parse(b)
+		if err != nil {
+			panic(err)
+		}
+		draw2d.RegisterFont(d, font)
+	}
+
 	src, err := png.Decode(bytes.NewReader(res.MansPng))
 	if err != nil {
 		panic(err)
@@ -306,17 +331,6 @@ func Render(w wde.Window, me res.Man, state State) {
 
 	img := image.NewRGBA(w.Screen().Bounds())
 	gc := draw2d.NewGraphicContext(img)
-
-	var lives string
-	if state.Lives > 1 {
-		lives = fmt.Sprintf("%d Mans", state.Lives)
-	} else if state.Lives == 1 {
-		lives = "1 Man!"
-	} else {
-		lives = "No Mans!!"
-	}
-	left, top, _, _ := gc.GetStringBounds(lives)
-	gc.FillStringAt(lives, 2-left, 2-top)
 
 	offX := int64(img.Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
 	offY := int64(img.Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
@@ -387,6 +401,17 @@ func Render(w wde.Window, me res.Man, state State) {
 	if state.Respawn[me] != 0 {
 		draw.Draw(img, img.Rect, deadhaze, image.ZP, draw.Over)
 	}
+
+	var lives string
+	if state.Lives > 1 {
+		lives = fmt.Sprintf("%d Mans", state.Lives)
+	} else if state.Lives == 1 {
+		lives = "1 Man!"
+	} else {
+		lives = "No Mans!!"
+	}
+	left, top, _, _ := gc.GetStringBounds(lives)
+	gc.FillStringAt(lives, 2-left, 2-top)
 
 	w.Screen().CopyRGBA(img, img.Rect)
 	w.FlushImage(img.Rect)
