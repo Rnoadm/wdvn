@@ -7,6 +7,7 @@ import (
 	_ "github.com/skelterjohn/go.wde/init"
 	"net"
 	"os"
+	"runtime/pprof"
 )
 
 var (
@@ -14,10 +15,20 @@ var (
 	flagAddress = flag.String("addr", "", "address to connect to, like \"192.168.1.100:7777\"")
 	flagLevel   = flag.String("level", "", "filename of level to play")
 	flagEditor  = flag.String("edit", "", "filename of level to edit")
+	flagCPUProf = flag.String("cpuprofile", "", "developer use only, filename")
 )
 
 func main() {
 	flag.Parse()
+
+	if *flagCPUProf != "" {
+		f, err := os.Create(*flagCPUProf)
+		if err != nil {
+			panic(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
 
 	if *flagEditor != "" {
 		go Editor(*flagEditor)
