@@ -15,12 +15,16 @@ import (
 func Listen(l net.Listener, world *World) {
 	defer l.Close()
 
-	broadcast, register, unregister := make(chan *res.Packet), make(chan chan<- *res.Packet), make(chan chan<- *res.Packet)
+	var (
+		broadcast  = make(chan *res.Packet)
+		register   = make(chan chan<- *res.Packet)
+		unregister = make(chan chan<- *res.Packet)
+		input      = make(chan *res.Packet)
+		state      = make(chan State)
+		connection = make(chan bool)
+	)
 	go Multicast(broadcast, register, unregister)
-
-	input := make(chan *res.Packet)
-	state := make(chan State)
-	go Manager(input, state, broadcast, world)
+	go Manager(input, state, connection, broadcast, world)
 
 	var connected [res.Man_count]uint64
 
@@ -32,6 +36,7 @@ func Listen(l net.Listener, world *World) {
 
 		ch := make(chan *res.Packet)
 		register <- ch
+		connection <- true
 
 		go Serve(conn, ch, broadcast, state, input, &connected, func() {
 			go func() {
@@ -40,6 +45,7 @@ func Listen(l net.Listener, world *World) {
 				}
 			}()
 			unregister <- ch
+			connection <- false
 		})
 	}
 }
@@ -177,21 +183,31 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 	}
 }
 
-func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Packet, world *World) {
-	var state State
-	var input [res.Man_count]res.Packet
+func Manager(in <-chan *res.Packet, out chan<- State, connection <-chan bool, broadcast chan<- *res.Packet, world *World) {
+	var (
+		state            State
+		input            [res.Man_count]res.Packet
+		connection_count int
+		prev             []byte
+		tick             = time.Tick(time.Second / TicksPerSecond)
+	)
 
 	state.Lives = DefaultLives
 	state.World = world
 	for i := range state.Mans {
+		state.Mans[i].Size = DefaultSize
 		state.Mans[i].Health = DefaultHealth
 	}
 
-	tick := time.Tick(time.Second / TicksPerSecond)
-
-	var prev []byte
-
 	for {
+		if connection_count == 0 {
+			if b := <-connection; b {
+				connection_count++
+			} else {
+				panic("connection count underflow")
+			}
+		}
+
 		select {
 		case p := <-in:
 			switch p.GetType() {
@@ -219,6 +235,19 @@ func Manager(in <-chan *res.Packet, out chan<- State, broadcast chan<- *res.Pack
 				Tick: proto.Uint64(t),
 				Data: diff,
 			})
+
+		case b := <-connection:
+			if b {
+				connection_count++
+				if connection_count < 0 {
+					panic("connection count overflow")
+				}
+			} else {
+				connection_count--
+				if connection_count < 0 {
+					panic("connection count underflow")
+				}
+			}
 		}
 	}
 }
