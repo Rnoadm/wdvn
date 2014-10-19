@@ -27,7 +27,7 @@ const (
 	WhipDamageMax           = 5
 	WhipSpeedMin            = 64 * PixelSize
 	WhipSpeedMax            = 512 * PixelSize
-	WhipDistance            = 8 * TileSize * PixelSize
+	WhipDistance            = 10 * TileSize * PixelSize
 	WhipAntiGravityDuration = TicksPerSecond / 2
 	DefaultLives            = 100
 	DefaultHealth           = 10
@@ -158,6 +158,64 @@ func (u *Unit) UpdateMan(state *State, input *res.Packet, man res.Man) {
 	} else {
 		u.Acceleration.Y = 0
 	}
+	if man == res.Man_Whip {
+		if state.WhipStop != 0 && state.WhipStop-state.WhipStart < state.Tick-state.WhipStop {
+			state.WhipStart, state.WhipStop, state.WhipEnd = 0, 0, Coord{}
+		}
+		if state.WhipStop == 0 && state.Mans[res.Man_Whip].Gravity != 0 {
+			state.Mans[res.Man_Whip].Gravity += Gravity / WhipAntiGravityDuration
+			if state.Mans[res.Man_Whip].Gravity > 0 {
+				state.Mans[res.Man_Whip].Gravity = 0
+			}
+		}
+		m1, m2 := input.GetMouse1() == res.Button_pressed, input.GetMouse2() == res.Button_pressed
+		if m1 || m2 {
+			state.WhipPull = m2
+			if state.WhipStart == 0 {
+				state.WhipStart = state.Tick
+			}
+		} else if state.WhipStart != 0 {
+			if state.WhipStop == 0 {
+				state.WhipStop = state.Tick
+				start, stop := state.Mans[res.Man_Whip].Position, state.Mans[res.Man_Whip].Target
+				start.Y -= ManSize.Y / 2
+				delta := stop.Sub(start)
+
+				dist := math.Hypot(float64(delta.X), float64(delta.Y))
+				if state.WhipStart < state.WhipStop-WhipTimeMax {
+					state.WhipStart = state.WhipStop - WhipTimeMax
+				}
+				state.WhipEnd = Coord{}
+				if state.WhipStart < state.WhipStop-WhipTimeMin {
+					stop.X = start.X + int64(float64(delta.X)*WhipDistance/dist)
+					stop.Y = start.Y + int64(float64(delta.Y)*WhipDistance/dist)
+
+					tr := state.Trace(start, stop, Coord{1, 1}, false)
+					u := tr.Collide(&state.Mans[res.Man_Whip])
+					state.WhipEnd = tr.End
+
+					if u != nil && !u.IsMan(state) {
+						damage := int64(WhipDamageMin + (WhipDamageMax-WhipDamageMin)*(state.WhipStop-state.WhipStart)/(WhipTimeMax-WhipTimeMin))
+						u.Hurt(state, &state.Mans[res.Man_Whip], damage)
+					}
+
+					dx, dy := start.X-tr.End.X, start.Y-tr.End.Y
+					dist = math.Hypot(float64(dx), float64(dy))
+					if dist > 0 && (u != nil || tr.HitWorld) {
+						speed := float64(WhipSpeedMin+(WhipSpeedMax-WhipSpeedMin)*(state.WhipStop-state.WhipStart)/(WhipTimeMax-WhipTimeMin)) / dist
+						if state.WhipPull {
+							state.Mans[res.Man_Whip].Velocity.X = int64(float64(-dx) * speed)
+							state.Mans[res.Man_Whip].Velocity.Y = int64(float64(-dy) * speed)
+							state.Mans[res.Man_Whip].Gravity = -Gravity
+						} else if u != nil {
+							u.Velocity.X = int64(float64(dx) * speed)
+							u.Velocity.Y = int64(float64(dy) * speed)
+						}
+					}
+				}
+			}
+		}
+	}
 	if man == res.Man_Density {
 		if input.GetMouse1() == res.Button_pressed {
 			u.Gravity++
@@ -271,64 +329,6 @@ func (state *State) Update(input *[res.Man_count]res.Packet) {
 
 	for i := range state.Mans {
 		state.Mans[i].UpdateMan(state, &(*input)[i], res.Man(i))
-	}
-
-	if state.WhipStop != 0 && state.WhipStop-state.WhipStart < state.Tick-state.WhipStop {
-		state.WhipStart, state.WhipStop, state.WhipEnd = 0, 0, Coord{}
-	}
-	if state.WhipStop == 0 && state.Mans[res.Man_Whip].Gravity != 0 {
-		state.Mans[res.Man_Whip].Gravity += Gravity / WhipAntiGravityDuration
-		if state.Mans[res.Man_Whip].Gravity > 0 {
-			state.Mans[res.Man_Whip].Gravity = 0
-		}
-	}
-	m1, m2 := (*input)[res.Man_Whip].GetMouse1() == res.Button_pressed, (*input)[res.Man_Whip].GetMouse2() == res.Button_pressed
-	if m1 || m2 {
-		state.WhipPull = m2
-		if state.WhipStart == 0 {
-			state.WhipStart = state.Tick
-		}
-	} else if state.WhipStart != 0 {
-		if state.WhipStop == 0 {
-			state.WhipStop = state.Tick
-			start, stop := state.Mans[res.Man_Whip].Position, state.Mans[res.Man_Whip].Target
-			start.Y -= ManSize.Y / 2
-			delta := stop.Sub(start)
-
-			dist1 := math.Hypot(float64(delta.X), float64(delta.Y))
-			if state.WhipStart < state.WhipStop-WhipTimeMax {
-				state.WhipStart = state.WhipStop - WhipTimeMax
-			}
-			dist2 := float64(4 * TileSize * PixelSize)
-			state.WhipEnd = Coord{}
-			if state.WhipStart < state.WhipStop-WhipTimeMin {
-				stop.X = start.X + int64(float64(delta.X)*dist2/dist1)
-				stop.Y = start.Y + int64(float64(delta.Y)*dist2/dist1)
-
-				tr := state.Trace(start, stop, Coord{1, 1}, false)
-				u := tr.Collide(&state.Mans[res.Man_Whip])
-				state.WhipEnd = tr.End
-
-				if u != nil && !u.IsMan(state) {
-					damage := int64(WhipDamageMin + (WhipDamageMax-WhipDamageMin)*(state.WhipStop-state.WhipStart)/(WhipTimeMax-WhipTimeMin))
-					u.Hurt(state, &state.Mans[res.Man_Whip], damage)
-				}
-
-				dx, dy := start.X-tr.End.X, start.Y-tr.End.Y
-				dist := math.Hypot(float64(dx), float64(dy))
-				if dist > 0 && (u != nil || tr.HitWorld) {
-					speed := float64(WhipSpeedMin+(WhipSpeedMax-WhipSpeedMin)*(state.WhipStop-state.WhipStart)/(WhipTimeMax-WhipTimeMin)) / dist
-					if state.WhipPull {
-						state.Mans[res.Man_Whip].Velocity.X = int64(float64(-dx) * speed)
-						state.Mans[res.Man_Whip].Velocity.Y = int64(float64(-dy) * speed)
-						state.Mans[res.Man_Whip].Gravity = -Gravity
-					} else if u != nil {
-						u.Velocity.X = int64(float64(dx) * speed)
-						u.Velocity.Y = int64(float64(dy) * speed)
-					}
-				}
-			}
-		}
 	}
 }
 

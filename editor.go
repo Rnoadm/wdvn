@@ -86,7 +86,7 @@ func Editor(filename string) {
 				tr := terrain[world.Tile(tx, ty)]
 				tm := tilemask[i]
 				r := image.Rect(int(x+offX), int(y+offY), int(x+offX+TileSize), int(y+offY+TileSize))
-				draw.DrawMask(img, r, tr, image.ZP, tm, tm.Rect.Min, draw.Over)
+				draw.DrawMask(img, r, tr, tr.Rect.Min, tm, tm.Rect.Min, draw.Over)
 			}
 		}
 

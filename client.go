@@ -265,6 +265,7 @@ var (
 	fade       [VelocityClones + 1]*image.Uniform
 	deadfade   *image.Uniform
 	deadhaze   *image.Uniform
+	parallax   [2]*image.RGBA
 )
 
 func init() {
@@ -407,6 +408,20 @@ func init() {
 
 	deadfade = image.NewUniform(color.Alpha{0x40})
 	deadhaze = image.NewUniform(color.RGBA{64, 64, 64, 64})
+
+	src, err = png.Decode(bytes.NewReader(res.Parallax0Png))
+	if err != nil {
+		panic(err)
+	}
+	parallax[0] = image.NewRGBA(src.Bounds())
+	draw.Draw(parallax[0], parallax[0].Rect, src, parallax[0].Rect.Min, draw.Src)
+
+	src, err = png.Decode(bytes.NewReader(res.Parallax1Png))
+	if err != nil {
+		panic(err)
+	}
+	parallax[1] = image.NewRGBA(src.Bounds())
+	draw.Draw(parallax[1], parallax[1].Rect, src, parallax[1].Rect.Min, draw.Src)
 }
 
 func Render(w wde.Window, me res.Man, state State) {
@@ -421,6 +436,12 @@ func Render(w wde.Window, me res.Man, state State) {
 
 	offX := int64(img.Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
 	offY := int64(img.Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
+
+	for i, p := range parallax {
+		for x := img.Rect.Min.X - (int((offX*int64(1+i)/int64(1+len(parallax)))%int64(p.Rect.Dx()))+p.Rect.Dx())%p.Rect.Dx(); x < img.Rect.Max.X; x += p.Rect.Dx() {
+			draw.Draw(img, image.Rect(x, img.Rect.Max.Y-p.Rect.Dy(), img.Rect.Max.X, img.Rect.Max.Y), p, p.Rect.Min, draw.Over)
+		}
+	}
 
 	min, max := Coord{-TileSize, -TileSize}, Coord{int64(img.Rect.Dx()) + TileSize, int64(img.Rect.Dy()) + TileSize}
 	min = min.Sub(Coord{offX, offY}).Floor(TileSize)
@@ -457,10 +478,10 @@ func Render(w wde.Window, me res.Man, state State) {
 			if state.World.Solid(tx-1, ty+1) {
 				i |= 1 << 8
 			}
-			tr := image.Black
+			tr := terrain[state.World.Tile(tx, ty)]
 			tm := tilemask[i]
 			r := image.Rect(int(x+offX), int(y+offY), int(x+offX+TileSize), int(y+offY+TileSize))
-			draw.DrawMask(img, r, tr, image.ZP, tm, tm.Rect.Min, draw.Over)
+			draw.DrawMask(img, r, tr, tr.Rect.Min, tm, tm.Rect.Min, draw.Over)
 		}
 	}
 
