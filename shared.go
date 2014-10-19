@@ -17,10 +17,10 @@ const (
 	VelocityClones          = 2
 	TileSize                = 16
 	PixelSize               = 64
-	Gravity                 = PixelSize * 9                              // per tick
-	MinimumVelocity         = PixelSize * TicksPerSecond / 2             // unit stops moving if on ground
-	TerminalVelocity        = 10 * TileSize * PixelSize * TicksPerSecond // unit cannot move faster on x or y than this
-	Friction                = 100                                        // 1/Friction of the velocity is removed per tick
+	Gravity                 = PixelSize * 9                               // per tick
+	MinimumVelocity         = PixelSize * TicksPerSecond / 2              // unit stops moving if on ground
+	TerminalVelocity        = 100 * TileSize * PixelSize * TicksPerSecond // unit cannot move faster on x or y than this
+	Friction                = 100                                         // 1/Friction of the velocity is removed per tick
 	TicksPerSecond          = 100
 	WhipTimeMin             = 0.2 * TicksPerSecond
 	WhipTimeMax             = 1.5 * TicksPerSecond
@@ -136,13 +136,40 @@ func (u *Unit) UpdateMan(state *State, input *res.Packet, man res.Man) {
 		if input.GetKeyRight() == res.Button_pressed {
 			u.Acceleration.X = 0
 		} else {
-			u.Acceleration.X = -2 * PixelSize
+			if u.Size == CrouchSize {
+				u.Acceleration.X = -1 * PixelSize
+			} else {
+				u.Acceleration.X = -2 * PixelSize
+			}
 		}
 	} else {
 		if input.GetKeyRight() == res.Button_pressed {
-			u.Acceleration.X = 2 * PixelSize
+			if u.Size == CrouchSize {
+				u.Acceleration.X = 1 * PixelSize
+			} else {
+				u.Acceleration.X = 2 * PixelSize
+			}
 		} else {
 			u.Acceleration.X = 0
+		}
+	}
+	if input.GetKeyDown() == res.Button_pressed {
+		if u.Size == ManSize {
+			u.Size = CrouchSize
+			if !onGround {
+				u.Position.Y += CrouchSize.Y - ManSize.Y
+			}
+		}
+	} else {
+		if u.Size == CrouchSize {
+			tr := state.Trace(u.Position, u.Position, ManSize, false)
+			collide := tr.Collide(u)
+			if collide == nil && !tr.HitWorld {
+				u.Size = ManSize
+				if !onGround {
+					u.Velocity.Y += Gravity
+				}
+			}
 		}
 	}
 	if !onGround && man == res.Man_Normal {
@@ -243,7 +270,6 @@ func (u *Unit) UpdatePhysics(state *State) {
 	onGround := u.OnGround(state)
 
 	if onGround && u.Velocity.Y > 0 {
-		// TODO: deal physics damage based on velocity
 		u.Velocity.Y = 0
 	}
 
@@ -310,12 +336,23 @@ func (u *Unit) UpdatePhysics(state *State) {
 			}
 		}
 	}
-	if collide == nil {
+	if collide == nil && tr.HitWorld {
 		switch tr.Special {
 		case SpecialTile_None:
-			// do nothing
+			switch speed := (u.Velocity.X*u.Velocity.X + u.Velocity.Y*u.Velocity.Y) / TileSize / PixelSize / TileSize / PixelSize; {
+			case speed > 100*100:
+				u.Hurt(state, nil, 10)
+			case speed > 85*85:
+				u.Hurt(state, nil, 8)
+			case speed > 70*70:
+				u.Hurt(state, nil, 6)
+			case speed > 55*55:
+				u.Hurt(state, nil, 4)
+			case speed > 30*30:
+				u.Hurt(state, nil, 1)
+			}
 		case SpecialTile_Bounce:
-			u.Velocity.X, u.Velocity.Y = -u.Velocity.X*2, -u.Velocity.Y*2
+			u.Velocity.X, u.Velocity.Y = -u.Velocity.X*3/2, -u.Velocity.Y*3/2
 		default:
 			panic("unimplemented special tile type: " + specialTile_names[tr.Special])
 		}

@@ -344,7 +344,7 @@ func init() {
 		panic("man size mismatch")
 	}
 	r1 := image.Rect(0, 0, int(ManSize.X/PixelSize), int(ManSize.Y/PixelSize)).Add(dst.Rect.Min)
-	r2 := image.Rect(int(ManSize.X/PixelSize), int(ManSize.X-CrouchSize.Y), int(ManSize.X/PixelSize+CrouchSize.X/PixelSize), int(CrouchSize.Y/PixelSize)).Add(dst.Rect.Min)
+	r2 := image.Rect(int(ManSize.X/PixelSize), int(ManSize.X-CrouchSize.Y), int(ManSize.X/PixelSize+CrouchSize.X/PixelSize), int(ManSize.Y/PixelSize)).Add(dst.Rect.Min)
 	for i := range mansprites {
 		mansprites[i][0] = dst.SubImage(r1.Add(image.Pt(0, i*int(ManSize.Y/PixelSize)))).(*image.RGBA)
 		mansprites[i][1] = dst.SubImage(r2.Add(image.Pt(0, i*int(ManSize.Y/PixelSize)))).(*image.RGBA)
@@ -506,7 +506,12 @@ func Render(w wde.Window, me res.Man, state State) {
 			pos.X -= state.Mans[i].Velocity.X * int64(j) / TicksPerSecond
 			pos.Y -= state.Mans[i].Velocity.Y * int64(j) / TicksPerSecond
 
-			sprite := mansprites[i][0]
+			k := 0
+			if state.Mans[i].Size == CrouchSize {
+				k = 1
+			}
+
+			sprite := mansprites[i][k]
 			r := sprite.Rect.Sub(sprite.Rect.Min).Add(image.Point{
 				X: int(pos.X/PixelSize+offX) - sprite.Rect.Dx()/2,
 				Y: int(pos.Y/PixelSize+offY) - sprite.Rect.Dy(),
