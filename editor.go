@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/skelterjohn/go.wde"
 	"image"
-	"image/color"
 	"image/draw"
 	"os"
 )
@@ -22,13 +21,8 @@ func Editor(filename string) {
 	w.Show()
 
 	var (
-		solidity   bool
 		world      World
 		offX, offY int64
-		solid      = map[bool]*image.Uniform{
-			true:  image.NewUniform(color.Gray{64}),
-			false: image.NewUniform(color.Gray{192}),
-		}
 	)
 
 	func() {
@@ -38,17 +32,18 @@ func Editor(filename string) {
 			err = gob.NewDecoder(f).Decode(&world)
 		}
 		if err != nil || len(world.Tiles) < 3 {
-			world.Min = Coord{0, -1}
+			world.Min = Coord{0, 0}
 			world.Max = Coord{0, 1}
 			world.Tiles = make([]WorldTile, 3)
-			world.Tiles[0].Tile, world.Tiles[0].Solid = 0, false
-			world.Tiles[1].Tile, world.Tiles[1].Solid = 2, true
-			world.Tiles[2].Tile, world.Tiles[2].Solid = 1, true
+			world.Tiles[0].Solid = false
+			world.Tiles[1].Solid = true
 		}
 	}()
 
 	render := func(offX, offY int64) {
 		img := image.NewRGBA(w.Screen().Bounds())
+
+		draw.Draw(img, img.Rect, image.White, image.ZP, draw.Src)
 
 		offX = int64(img.Rect.Dx()/2) - offX
 		offY = int64(img.Rect.Dy()/2) - offY
@@ -59,14 +54,39 @@ func Editor(filename string) {
 
 		for x := min.X; x < max.X; x += TileSize {
 			for y := min.Y; y < max.Y; y += TileSize {
-				var i image.Image
-				if solidity {
-					i = solid[world.Solid(x/TileSize, y/TileSize)]
-				} else {
-					i = terrain[world.Tile(x/TileSize, y/TileSize)]
+				tx, ty := x/TileSize, y/TileSize
+				i := 0
+				if world.Solid(tx, ty) {
+					i |= 1 << 0
 				}
+				if world.Solid(tx-1, ty) {
+					i |= 1 << 1
+				}
+				if world.Solid(tx-1, ty-1) {
+					i |= 1 << 2
+				}
+				if world.Solid(tx, ty-1) {
+					i |= 1 << 3
+				}
+				if world.Solid(tx+1, ty-1) {
+					i |= 1 << 4
+				}
+				if world.Solid(tx+1, ty) {
+					i |= 1 << 5
+				}
+				if world.Solid(tx+1, ty+1) {
+					i |= 1 << 6
+				}
+				if world.Solid(tx, ty+1) {
+					i |= 1 << 7
+				}
+				if world.Solid(tx-1, ty+1) {
+					i |= 1 << 8
+				}
+				tr := terrain[world.Tile(tx, ty)]
+				tm := tilemask[i]
 				r := image.Rect(int(x+offX), int(y+offY), int(x+offX+TileSize), int(y+offY+TileSize))
-				draw.Draw(img, r, i, i.Bounds().Min, draw.Src)
+				draw.DrawMask(img, r, tr, image.ZP, tm, tm.Rect.Min, draw.Over)
 			}
 		}
 
@@ -91,8 +111,6 @@ func Editor(filename string) {
 			// TODO
 		case wde.KeyTypedEvent:
 			switch e.Key {
-			case wde.KeySpace:
-				solidity = !solidity
 			case wde.KeyUpArrow:
 				offY -= 10
 			case wde.KeyDownArrow:
@@ -111,17 +129,15 @@ func Editor(filename string) {
 			world.ensureTileExists(c.X/TileSize, c.Y/TileSize)
 			i, _ := world.index(c.X/TileSize, c.Y/TileSize)
 
-			if solidity {
+			switch e.Which {
+			case wde.LeftButton:
+				world.Tiles[i].Tile += 1
+				world.Tiles[i].Tile %= len(terrain)
+			case wde.MiddleButton:
+				world.Tiles[i].Tile += len(terrain) - 1
+				world.Tiles[i].Tile %= len(terrain)
+			case wde.RightButton:
 				world.Tiles[i].Solid = !world.Tiles[i].Solid
-			} else {
-				switch e.Which {
-				case wde.LeftButton:
-					world.Tiles[i].Tile += 1
-					world.Tiles[i].Tile %= len(terrain)
-				case wde.RightButton:
-					world.Tiles[i].Tile += len(terrain) - 1
-					world.Tiles[i].Tile %= len(terrain)
-				}
 			}
 
 			world.shrink()

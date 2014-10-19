@@ -27,14 +27,17 @@ const (
 	WhipDamageMax           = 5
 	WhipSpeedMin            = 64 * PixelSize
 	WhipSpeedMax            = 512 * PixelSize
-	WhipDistance            = 4 * TileSize * PixelSize
+	WhipDistance            = 8 * TileSize * PixelSize
 	WhipAntiGravityDuration = TicksPerSecond / 2
 	DefaultLives            = 100
 	DefaultHealth           = 10
 	RespawnTime             = 10 * TicksPerSecond
 )
 
-var DefaultSize = Coord{16 * PixelSize, 16 * PixelSize}
+var (
+	ManSize    = Coord{30 * PixelSize, 46 * PixelSize}
+	CrouchSize = Coord{30 * PixelSize, 30 * PixelSize}
+)
 
 var (
 	Type_Ping      = res.Type_Ping.Enum()
@@ -64,7 +67,7 @@ func (c Coord) Sub(o Coord) Coord {
 
 func (c Coord) Hull() (min, max Coord) {
 	// avoid rounding off odd coordinates
-	max = Coord{c.X / 2, c.Y / 2}
+	max = Coord{c.X / 2, 0}
 	min = Coord{max.X - c.X, max.Y - c.Y}
 	return
 }
@@ -289,6 +292,7 @@ func (state *State) Update(input *[res.Man_count]res.Packet) {
 		if state.WhipStop == 0 {
 			state.WhipStop = state.Tick
 			start, stop := state.Mans[res.Man_Whip].Position, state.Mans[res.Man_Whip].Target
+			start.Y -= ManSize.Y / 2
 			delta := stop.Sub(start)
 
 			dist1 := math.Hypot(float64(delta.X), float64(delta.Y))

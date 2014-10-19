@@ -259,11 +259,12 @@ func Client(conn net.Conn) {
 }
 
 var (
-	sprites  [res.Man_count]*image.RGBA
-	terrain  []*image.RGBA
-	fade     [VelocityClones + 1]*image.Uniform
-	deadfade *image.Uniform
-	deadhaze *image.Uniform
+	mansprites [res.Man_count][2]*image.RGBA
+	terrain    []*image.RGBA
+	tilemask   [1 << 10]*image.Alpha
+	fade       [VelocityClones + 1]*image.Uniform
+	deadfade   *image.Uniform
+	deadhaze   *image.Uniform
 )
 
 func init() {
@@ -295,25 +296,109 @@ func init() {
 	}
 	dst := image.NewRGBA(src.Bounds())
 	draw.Draw(dst, dst.Rect, src, dst.Rect.Min, draw.Src)
-
-	y := dst.Rect.Dy() / len(sprites)
-	r := image.Rect(dst.Rect.Min.X, dst.Rect.Min.Y, dst.Rect.Max.X, dst.Rect.Min.Y+y)
-
-	for i := range sprites {
-		sprites[i] = dst.SubImage(r.Add(image.Pt(0, y*i))).(*image.RGBA)
+	if ManSize.Y < CrouchSize.Y || dst.Rect.Dy() != len(mansprites)*int(ManSize.Y/PixelSize) || dst.Rect.Dx() != int(ManSize.X/PixelSize+CrouchSize.X/PixelSize) {
+		panic("man size mismatch")
+	}
+	r1 := image.Rect(0, 0, int(ManSize.X/PixelSize), int(ManSize.Y/PixelSize)).Add(dst.Rect.Min)
+	r2 := image.Rect(int(ManSize.X/PixelSize), int(ManSize.X-CrouchSize.Y), int(ManSize.X/PixelSize+CrouchSize.X/PixelSize), int(CrouchSize.Y/PixelSize)).Add(dst.Rect.Min)
+	for i := range mansprites {
+		mansprites[i][0] = dst.SubImage(r1.Add(image.Pt(0, i*int(ManSize.Y/PixelSize)))).(*image.RGBA)
+		mansprites[i][1] = dst.SubImage(r2.Add(image.Pt(0, i*int(ManSize.Y/PixelSize)))).(*image.RGBA)
 	}
 
-	src, err = png.Decode(bytes.NewReader(res.TilePng))
+	src, err = png.Decode(bytes.NewReader(res.TerrainPng))
 	if err != nil {
 		panic(err)
 	}
 	dst = image.NewRGBA(src.Bounds())
 	draw.Draw(dst, dst.Rect, src, dst.Rect.Min, draw.Src)
-	if dst.Rect.Dy() != TileSize {
+	if dst.Rect.Dx()%TileSize != 0 || dst.Rect.Dy() != TileSize {
 		panic("tile size mismatch")
 	}
-	for x := dst.Rect.Min.X; x < dst.Rect.Max.X; x += dst.Rect.Dy() {
-		terrain = append(terrain, dst.SubImage(image.Rect(x, dst.Rect.Min.Y, x+dst.Rect.Dy(), dst.Rect.Max.Y)).(*image.RGBA))
+	for x := dst.Rect.Min.X; x < dst.Rect.Max.X; x += TileSize {
+		terrain = append(terrain, dst.SubImage(image.Rect(x, dst.Rect.Min.Y, x+TileSize, dst.Rect.Max.Y)).(*image.RGBA))
+	}
+
+	src, err = png.Decode(bytes.NewReader(res.TileSidePng))
+	if err != nil {
+		panic(err)
+	}
+	tileSide := image.NewGray(src.Bounds())
+	draw.Draw(tileSide, tileSide.Rect, src, tileSide.Rect.Min, draw.Src)
+	if tileSide.Rect.Dy() != TileSize {
+		panic("tile size mismatch")
+	}
+	src, err = png.Decode(bytes.NewReader(res.TileCornerInnerPng))
+	if err != nil {
+		panic(err)
+	}
+	tileCornerInner := image.NewGray(src.Bounds())
+	draw.Draw(tileCornerInner, tileCornerInner.Rect, src, tileCornerInner.Rect.Min, draw.Src)
+	if tileCornerInner.Rect.Dx() != tileCornerInner.Rect.Dy() || tileSide.Rect.Dx() != tileCornerInner.Rect.Dx() {
+		panic("tile size mismatch")
+	}
+	src, err = png.Decode(bytes.NewReader(res.TileCornerOuterPng))
+	if err != nil {
+		panic(err)
+	}
+	tileCornerOuter := image.NewGray(src.Bounds())
+	draw.Draw(tileCornerOuter, tileCornerOuter.Rect, src, tileCornerOuter.Rect.Min, draw.Src)
+	if tileCornerInner.Rect.Dx() != tileCornerOuter.Rect.Dx() || tileCornerInner.Rect.Dy() != tileCornerOuter.Rect.Dy() {
+		panic("tile size mismatch")
+	}
+	{
+		r := image.Rect(0, 0, TileSize, TileSize)
+
+		for i := range tilemask {
+			tilemask[i] = image.NewAlpha(r)
+			if i&(1<<0) == 0 {
+				continue
+			}
+			draw.Draw(tilemask[i], r, image.NewUniform(color.Opaque), image.ZP, draw.Src)
+			drawRotated := func(img *image.Gray, f func(int, int) (int, int)) {
+				for x := 0; x < img.Rect.Dx(); x++ {
+					for y := 0; y < img.Rect.Dy(); y++ {
+						tilemask[i].Pix[tilemask[i].PixOffset(f(x, y))] = img.Pix[img.PixOffset(x, y)]
+					}
+				}
+			}
+			if i&(1<<1) == 0 {
+				drawRotated(tileSide, func(x, y int) (int, int) { return x, y })
+			}
+			if i&(1<<3) == 0 {
+				drawRotated(tileSide, func(x, y int) (int, int) { return TileSize - 1 - y, x })
+			}
+			if i&(1<<5) == 0 {
+				drawRotated(tileSide, func(x, y int) (int, int) { return TileSize - 1 - x, TileSize - 1 - y })
+			}
+			if i&(1<<7) == 0 {
+				drawRotated(tileSide, func(x, y int) (int, int) { return y, TileSize - 1 - x })
+			}
+			if i&(1<<1|1<<3) == 0 {
+				drawRotated(tileCornerOuter, func(x, y int) (int, int) { return x, y })
+			}
+			if i&(1<<3|1<<5) == 0 {
+				drawRotated(tileCornerOuter, func(x, y int) (int, int) { return TileSize - 1 - y, x })
+			}
+			if i&(1<<5|1<<7) == 0 {
+				drawRotated(tileCornerOuter, func(x, y int) (int, int) { return TileSize - 1 - x, TileSize - 1 - y })
+			}
+			if i&(1<<7|1<<1) == 0 {
+				drawRotated(tileCornerOuter, func(x, y int) (int, int) { return y, TileSize - 1 - x })
+			}
+			if i&(1<<1|1<<2|1<<3) == 1<<1|1<<3 {
+				drawRotated(tileCornerInner, func(x, y int) (int, int) { return x, y })
+			}
+			if i&(1<<3|1<<4|1<<5) == 1<<3|1<<5 {
+				drawRotated(tileCornerInner, func(x, y int) (int, int) { return TileSize - 1 - y, x })
+			}
+			if i&(1<<5|1<<6|1<<7) == 1<<5|1<<7 {
+				drawRotated(tileCornerInner, func(x, y int) (int, int) { return TileSize - 1 - x, TileSize - 1 - y })
+			}
+			if i&(1<<7|1<<8|1<<1) == 1<<7|1<<1 {
+				drawRotated(tileCornerInner, func(x, y int) (int, int) { return y, TileSize - 1 - x })
+			}
+		}
 	}
 
 	for i := range fade {
@@ -332,6 +417,8 @@ func Render(w wde.Window, me res.Man, state State) {
 	img := image.NewRGBA(w.Screen().Bounds())
 	gc := draw2d.NewGraphicContext(img)
 
+	draw.Draw(img, img.Rect, image.White, image.ZP, draw.Src)
+
 	offX := int64(img.Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
 	offY := int64(img.Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
 
@@ -341,9 +428,39 @@ func Render(w wde.Window, me res.Man, state State) {
 
 	for x := min.X; x < max.X; x += TileSize {
 		for y := min.Y; y < max.Y; y += TileSize {
-			t := terrain[state.World.Tile(x/TileSize, y/TileSize)]
+			tx, ty := x/TileSize, y/TileSize
+			i := 0
+			if state.World.Solid(tx, ty) {
+				i |= 1 << 0
+			}
+			if state.World.Solid(tx-1, ty) {
+				i |= 1 << 1
+			}
+			if state.World.Solid(tx-1, ty-1) {
+				i |= 1 << 2
+			}
+			if state.World.Solid(tx, ty-1) {
+				i |= 1 << 3
+			}
+			if state.World.Solid(tx+1, ty-1) {
+				i |= 1 << 4
+			}
+			if state.World.Solid(tx+1, ty) {
+				i |= 1 << 5
+			}
+			if state.World.Solid(tx+1, ty+1) {
+				i |= 1 << 6
+			}
+			if state.World.Solid(tx, ty+1) {
+				i |= 1 << 7
+			}
+			if state.World.Solid(tx-1, ty+1) {
+				i |= 1 << 8
+			}
+			tr := image.Black
+			tm := tilemask[i]
 			r := image.Rect(int(x+offX), int(y+offY), int(x+offX+TileSize), int(y+offY+TileSize))
-			draw.Draw(img, r, t, t.Rect.Min, draw.Src)
+			draw.DrawMask(img, r, tr, image.ZP, tm, tm.Rect.Min, draw.Over)
 		}
 	}
 
@@ -352,14 +469,16 @@ func Render(w wde.Window, me res.Man, state State) {
 			pos := state.Mans[i].Position
 			pos.X -= state.Mans[i].Velocity.X * int64(j) / TicksPerSecond
 			pos.Y -= state.Mans[i].Velocity.Y * int64(j) / TicksPerSecond
-			r := sprites[i].Rect.Sub(sprites[i].Rect.Min).Add(image.Point{
-				X: int(pos.X/PixelSize+offX) - sprites[i].Rect.Dx()/2,
-				Y: int(pos.Y/PixelSize+offY) - sprites[i].Rect.Dy()/2,
+
+			sprite := mansprites[i][0]
+			r := sprite.Rect.Sub(sprite.Rect.Min).Add(image.Point{
+				X: int(pos.X/PixelSize+offX) - sprite.Rect.Dx()/2,
+				Y: int(pos.Y/PixelSize+offY) - sprite.Rect.Dy(),
 			})
 			if state.Respawn[i] != 0 {
 				r.Min.Y += r.Dy() - r.Dy()*int(state.Respawn[i]-state.Tick)/RespawnTime
 			}
-			draw.DrawMask(img, r, sprites[i], sprites[i].Rect.Min, fade[j], image.ZP, draw.Over)
+			draw.DrawMask(img, r, sprite, sprite.Rect.Min, fade[j], image.ZP, draw.Over)
 
 			if j == 0 {
 				if r.Intersect(img.Rect).Empty() {
@@ -376,20 +495,20 @@ func Render(w wde.Window, me res.Man, state State) {
 						r = r.Add(image.Pt(0, img.Rect.Max.Y-r.Max.Y))
 					}
 
-					draw.DrawMask(img, r, sprites[i], sprites[i].Rect.Min, deadfade, image.ZP, draw.Over)
+					draw.DrawMask(img, r, sprite, sprite.Rect.Min, deadfade, image.ZP, draw.Over)
 				}
 
 				target := state.Mans[i].Target
 				draw.Draw(img, image.Rect(0, 0, 1, 1).Add(image.Point{
 					X: int(target.X/PixelSize + offX),
 					Y: int(target.Y/PixelSize + offY),
-				}), sprites[i], sprites[i].Rect.Min, draw.Over)
+				}), sprite, sprite.Rect.Min, draw.Over)
 
 				switch res.Man(i) {
 				case res.Man_Whip:
 					if state.WhipStop != 0 && !state.WhipEnd.Zero() {
 						gc.SetStrokeColor(color.Black)
-						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize+offY))
+						gc.MoveTo(float64(pos.X/PixelSize+offX), float64((pos.Y-ManSize.Y/2)/PixelSize+offY))
 						gc.LineTo(float64(state.WhipEnd.X/PixelSize+offX), float64(state.WhipEnd.Y/PixelSize+offY))
 						gc.Stroke()
 					}

@@ -63,7 +63,7 @@ func (w *World) shrink() {
 	newMin, newMax := w.Min, w.Max
 	for {
 		top, bottom, left, right := true, true, true, true
-		if newMin.Y != newMax.Y {
+		if newMin.Y < newMax.Y {
 			for x := newMin.X; x <= newMax.X; x++ {
 				i1, _ := w.index(x, newMin.Y)
 				i2, _ := w.index(x, newMin.Y+1)
@@ -79,7 +79,7 @@ func (w *World) shrink() {
 		} else {
 			top, bottom = false, false
 		}
-		if newMin.X != newMax.X {
+		if newMin.X < newMax.X {
 			for y := newMin.Y; y <= newMax.Y; y++ {
 				i1, _ := w.index(newMin.X, y)
 				i2, _ := w.index(newMin.X+1, y)
@@ -102,13 +102,13 @@ func (w *World) shrink() {
 		if left {
 			newMin.X++
 		}
-		if right {
+		if right && newMin.X != newMax.X {
 			newMax.X--
 		}
 		if top {
 			newMin.Y++
 		}
-		if bottom {
+		if bottom && newMin.Y != newMax.Y {
 			newMax.Y--
 		}
 	}

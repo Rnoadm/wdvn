@@ -195,7 +195,7 @@ func Manager(in <-chan *res.Packet, out chan<- State, connection <-chan bool, br
 	state.Lives = DefaultLives
 	state.World = world
 	for i := range state.Mans {
-		state.Mans[i].Size = DefaultSize
+		state.Mans[i].Size = ManSize
 		state.Mans[i].Health = DefaultHealth
 	}
 
