@@ -1,6 +1,7 @@
 package main
 
 import (
+	"code.google.com/p/draw2d/draw2d"
 	"encoding/gob"
 	"fmt"
 	"github.com/skelterjohn/go.wde"
@@ -42,6 +43,7 @@ func Editor(filename string) {
 
 	render := func(offX, offY int64) {
 		img := image.NewRGBA(w.Screen().Bounds())
+		gc := draw2d.NewGraphicContext(img)
 
 		draw.Draw(img, img.Rect, image.White, image.ZP, draw.Src)
 
@@ -49,6 +51,14 @@ func Editor(filename string) {
 		offY = int64(img.Rect.Dy()/2) - offY
 
 		world.Render(img, offX, offY)
+
+		for x := world.Min.X; x <= world.Max.X; x++ {
+			for y := world.Min.Y; y <= world.Max.Y; y++ {
+				if s := world.Special(x, y); s != SpecialTile_None {
+					gc.FillStringAt(specialTile_names[s], float64(offX+x*TileSize), float64(offY+y*TileSize+TileSize))
+				}
+			}
+		}
 
 		w.Screen().CopyRGBA(img, img.Rect)
 		w.FlushImage(img.Rect)
@@ -91,13 +101,21 @@ func Editor(filename string) {
 
 			switch e.Which {
 			case wde.LeftButton:
-				world.Tiles[i].Tile += 1
-				world.Tiles[i].Tile %= len(terrain)
+				if world.Tiles[i].Solid {
+					world.Tiles[i].Tile += 1
+					world.Tiles[i].Tile %= len(terrain)
+				}
 			case wde.MiddleButton:
-				world.Tiles[i].Tile += len(terrain) - 1
-				world.Tiles[i].Tile %= len(terrain)
+				if world.Tiles[i].Solid {
+					world.Tiles[i].SpecialTile++
+					world.Tiles[i].SpecialTile %= SpecialTile_count
+				}
 			case wde.RightButton:
-				world.Tiles[i].Solid = !world.Tiles[i].Solid
+				if world.Tiles[i].Solid {
+					world.Tiles[i] = WorldTile{}
+				} else {
+					world.Tiles[i].Solid = true
+				}
 			}
 
 			world.shrink()

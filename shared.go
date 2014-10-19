@@ -17,9 +17,10 @@ const (
 	VelocityClones          = 2
 	TileSize                = 16
 	PixelSize               = 64
-	Gravity                 = PixelSize * 9         // per tick
-	MinimumVelocity         = PixelSize * PixelSize // unit stops moving if on ground
-	Friction                = 100                   // 1/Friction of the velocity is removed per tick
+	Gravity                 = PixelSize * 9                              // per tick
+	MinimumVelocity         = PixelSize * TicksPerSecond / 2             // unit stops moving if on ground
+	TerminalVelocity        = 10 * TileSize * PixelSize * TicksPerSecond // unit cannot move faster on x or y than this
+	Friction                = 100                                        // 1/Friction of the velocity is removed per tick
 	TicksPerSecond          = 100
 	WhipTimeMin             = 0.2 * TicksPerSecond
 	WhipTimeMax             = 1.5 * TicksPerSecond
@@ -205,12 +206,12 @@ func (u *Unit) UpdateMan(state *State, input *res.Packet, man res.Man) {
 					if dist > 0 && (u != nil || tr.HitWorld) {
 						speed := float64(WhipSpeedMin+(WhipSpeedMax-WhipSpeedMin)*(state.WhipStop-state.WhipStart)/(WhipTimeMax-WhipTimeMin)) / dist
 						if state.WhipPull {
-							state.Mans[res.Man_Whip].Velocity.X = int64(float64(-dx) * speed)
-							state.Mans[res.Man_Whip].Velocity.Y = int64(float64(-dy) * speed)
+							state.Mans[res.Man_Whip].Velocity.X += int64(float64(-dx) * speed)
+							state.Mans[res.Man_Whip].Velocity.Y += int64(float64(-dy) * speed)
 							state.Mans[res.Man_Whip].Gravity = -Gravity
 						} else if u != nil {
-							u.Velocity.X = int64(float64(dx) * speed)
-							u.Velocity.Y = int64(float64(dy) * speed)
+							u.Velocity.X += int64(float64(dx) * speed)
+							u.Velocity.Y += int64(float64(dy) * speed)
 						}
 					}
 				}
@@ -255,6 +256,19 @@ func (u *Unit) UpdatePhysics(state *State) {
 		u.Velocity.Y += Gravity + u.Gravity
 	}
 
+	if u.Velocity.X > TerminalVelocity {
+		u.Velocity.X = TerminalVelocity
+	}
+	if u.Velocity.X < -TerminalVelocity {
+		u.Velocity.X = -TerminalVelocity
+	}
+	if u.Velocity.Y > TerminalVelocity {
+		u.Velocity.Y = TerminalVelocity
+	}
+	if u.Velocity.Y < -TerminalVelocity {
+		u.Velocity.Y = -TerminalVelocity
+	}
+
 	if onGround &&
 		u.Velocity.X < MinimumVelocity &&
 		u.Velocity.X > -MinimumVelocity &&
@@ -296,6 +310,16 @@ func (u *Unit) UpdatePhysics(state *State) {
 			}
 		}
 	}
+	if collide == nil {
+		switch tr.Special {
+		case SpecialTile_None:
+			// do nothing
+		case SpecialTile_Bounce:
+			u.Velocity.X, u.Velocity.Y = -u.Velocity.X*2, -u.Velocity.Y*2
+		default:
+			panic("unimplemented special tile type: " + specialTile_names[tr.Special])
+		}
+	}
 	u.Position = tr.End
 	if collide != nil {
 		if !u.IsMan(state) || !collide.IsMan(state) {
@@ -304,8 +328,8 @@ func (u *Unit) UpdatePhysics(state *State) {
 			u.Velocity.X, u.Velocity.Y = u.Velocity.X*2, u.Velocity.Y*2
 			collide.Velocity.X, collide.Velocity.Y = collide.Velocity.X*2, collide.Velocity.Y*2
 		}
-		collide.Velocity.X, u.Velocity.X = u.Velocity.X, collide.Velocity.X
-		collide.Velocity.Y, u.Velocity.Y = u.Velocity.Y-Gravity, collide.Velocity.Y-Gravity
+		collide.Velocity.X, u.Velocity.X = u.Velocity.X*2/3+collide.Velocity.X/3, collide.Velocity.X*2/3+u.Velocity.X/3
+		collide.Velocity.Y, u.Velocity.Y = u.Velocity.Y*2/3+collide.Velocity.Y/3, collide.Velocity.Y*2/3+u.Velocity.Y/3
 	}
 	if pos := u.Position.Floor(PixelSize * TileSize); state.world.Outside(pos.X/TileSize/PixelSize, pos.Y/TileSize/PixelSize) > 100 {
 		u.Hurt(state, nil, u.Health)
@@ -345,6 +369,7 @@ type Trace struct {
 	End      Coord
 	Units    []TraceUnit
 	HitWorld bool
+	Special  SpecialTile
 }
 
 func (t *Trace) Collide(ignore ...*Unit) *Unit {
@@ -463,10 +488,11 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 		for y := bounds_min.Y; y <= bounds_max.Y; y += TileSize * PixelSize {
 			if state.world.Solid(x/TileSize/PixelSize, y/TileSize/PixelSize) {
 				dist, dx, dy := traceAABB(Coord{x, y}, Coord{x + TileSize*PixelSize, y + TileSize*PixelSize})
-				if dist >= 0 && dist < maxDist {
+				if dist >= 0 && (dist < maxDist || (dist == maxDist && tr.Special == SpecialTile_None)) {
 					maxDist = dist
 					tr.HitWorld = true
 					tr.End = start.Add(Coord{dx, dy})
+					tr.Special = state.world.Special(x/TileSize/PixelSize, y/TileSize/PixelSize)
 				}
 			}
 		}

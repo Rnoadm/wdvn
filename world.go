@@ -8,9 +8,23 @@ import (
 
 const WorldRenderCacheSize = 64
 
+type SpecialTile int
+
+const (
+	SpecialTile_None = iota
+	SpecialTile_Bounce
+	SpecialTile_count
+)
+
+var specialTile_names [SpecialTile_count]string = [...]string{
+	SpecialTile_None:   "none",
+	SpecialTile_Bounce: "bounce",
+}
+
 type WorldTile struct {
 	Tile  int
 	Solid bool
+	SpecialTile
 }
 
 type World struct {
@@ -116,6 +130,11 @@ func (w *World) Tile(x, y int64) int {
 func (w *World) Solid(x, y int64) bool {
 	i, _ := w.index(x, y)
 	return w.Tiles[i].Solid
+}
+
+func (w *World) Special(x, y int64) SpecialTile {
+	i, _ := w.index(x, y)
+	return w.Tiles[i].SpecialTile
 }
 
 func (w *World) ensureTileExists(x, y int64) {
