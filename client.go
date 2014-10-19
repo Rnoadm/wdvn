@@ -88,11 +88,11 @@ func Client(conn net.Conn) {
 		}
 	}()
 
+	renderResize, renderMan, renderState := make(chan struct{}, 1), make(chan res.Man, 1), make(chan State, 1)
+	go RenderThread(w, renderResize, renderMan, renderState)
+
 	for {
 		select {
-		case <-repaintch:
-			Render(w, me, state)
-
 		case p, ok := <-read:
 			if !ok {
 				return
@@ -104,7 +104,14 @@ func Client(conn net.Conn) {
 
 			case res.Type_SelectMan:
 				me = p.GetMan()
-				Repaint()
+				for {
+					select {
+					case renderMan <- me:
+					case <-renderMan:
+						continue
+					}
+					break
+				}
 
 			case res.Type_Input:
 				proto.Merge(&input[p.GetMan()], p)
@@ -125,7 +132,14 @@ func Client(conn net.Conn) {
 							if err == nil {
 								state = newState
 								lastTick = state.Tick
-								Repaint()
+								for {
+									select {
+									case renderState <- state:
+									case <-renderState:
+										continue
+									}
+									break
+								}
 							}
 						}
 						if err != nil {
@@ -144,7 +158,14 @@ func Client(conn net.Conn) {
 					panic(err)
 				}
 				lastState, lastTick, noState = p.GetData(), state.Tick, false
-				Repaint()
+				for {
+					select {
+					case renderState <- state:
+					case <-renderState:
+						continue
+					}
+					break
+				}
 			}
 
 		case event := <-w.EventChan():
@@ -152,7 +173,10 @@ func Client(conn net.Conn) {
 			case wde.CloseEvent:
 				return
 			case wde.ResizeEvent:
-				Repaint()
+				select {
+				case renderResize <- struct{}{}:
+				default:
+				}
 			case wde.KeyDownEvent:
 				switch e.Key {
 				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow, wde.KeySpace:
@@ -424,6 +448,18 @@ func init() {
 	draw.Draw(parallax[1], parallax[1].Rect, src, parallax[1].Rect.Min, draw.Src)
 }
 
+func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, state <-chan State) {
+	m, s := <-man, <-state
+	for {
+		Render(w, m, s)
+		select {
+		case m = <-man:
+		case s = <-state:
+		case <-repaint:
+		}
+	}
+}
+
 func Render(w wde.Window, me res.Man, state State) {
 	if state.World == nil {
 		return
@@ -443,47 +479,7 @@ func Render(w wde.Window, me res.Man, state State) {
 		}
 	}
 
-	min, max := Coord{-TileSize, -TileSize}, Coord{int64(img.Rect.Dx()) + TileSize, int64(img.Rect.Dy()) + TileSize}
-	min = min.Sub(Coord{offX, offY}).Floor(TileSize)
-	max = max.Sub(Coord{offX, offY}).Floor(TileSize)
-
-	for x := min.X; x < max.X; x += TileSize {
-		for y := min.Y; y < max.Y; y += TileSize {
-			tx, ty := x/TileSize, y/TileSize
-			i := 0
-			if state.World.Solid(tx, ty) {
-				i |= 1 << 0
-			}
-			if state.World.Solid(tx-1, ty) {
-				i |= 1 << 1
-			}
-			if state.World.Solid(tx-1, ty-1) {
-				i |= 1 << 2
-			}
-			if state.World.Solid(tx, ty-1) {
-				i |= 1 << 3
-			}
-			if state.World.Solid(tx+1, ty-1) {
-				i |= 1 << 4
-			}
-			if state.World.Solid(tx+1, ty) {
-				i |= 1 << 5
-			}
-			if state.World.Solid(tx+1, ty+1) {
-				i |= 1 << 6
-			}
-			if state.World.Solid(tx, ty+1) {
-				i |= 1 << 7
-			}
-			if state.World.Solid(tx-1, ty+1) {
-				i |= 1 << 8
-			}
-			tr := terrain[state.World.Tile(tx, ty)]
-			tm := tilemask[i]
-			r := image.Rect(int(x+offX), int(y+offY), int(x+offX+TileSize), int(y+offY+TileSize))
-			draw.DrawMask(img, r, tr, tr.Rect.Min, tm, tm.Rect.Min, draw.Over)
-		}
-	}
+	state.World.Render(img, offX, offY)
 
 	for j := VelocityClones; j >= 0; j-- {
 		for i := range state.Mans {
@@ -555,13 +551,4 @@ func Render(w wde.Window, me res.Man, state State) {
 
 	w.Screen().CopyRGBA(img, img.Rect)
 	w.FlushImage(img.Rect)
-}
-
-var repaintch = make(chan struct{}, 1)
-
-func Repaint() {
-	select {
-	case repaintch <- struct{}{}:
-	default:
-	}
 }

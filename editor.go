@@ -48,47 +48,7 @@ func Editor(filename string) {
 		offX = int64(img.Rect.Dx()/2) - offX
 		offY = int64(img.Rect.Dy()/2) - offY
 
-		min, max := Coord{-TileSize, -TileSize}, Coord{int64(img.Rect.Dx()) + TileSize, int64(img.Rect.Dy()) + TileSize}
-		min = min.Sub(Coord{offX, offY}).Floor(TileSize)
-		max = max.Sub(Coord{offX, offY}).Floor(TileSize)
-
-		for x := min.X; x < max.X; x += TileSize {
-			for y := min.Y; y < max.Y; y += TileSize {
-				tx, ty := x/TileSize, y/TileSize
-				i := 0
-				if world.Solid(tx, ty) {
-					i |= 1 << 0
-				}
-				if world.Solid(tx-1, ty) {
-					i |= 1 << 1
-				}
-				if world.Solid(tx-1, ty-1) {
-					i |= 1 << 2
-				}
-				if world.Solid(tx, ty-1) {
-					i |= 1 << 3
-				}
-				if world.Solid(tx+1, ty-1) {
-					i |= 1 << 4
-				}
-				if world.Solid(tx+1, ty) {
-					i |= 1 << 5
-				}
-				if world.Solid(tx+1, ty+1) {
-					i |= 1 << 6
-				}
-				if world.Solid(tx, ty+1) {
-					i |= 1 << 7
-				}
-				if world.Solid(tx-1, ty+1) {
-					i |= 1 << 8
-				}
-				tr := terrain[world.Tile(tx, ty)]
-				tm := tilemask[i]
-				r := image.Rect(int(x+offX), int(y+offY), int(x+offX+TileSize), int(y+offY+TileSize))
-				draw.DrawMask(img, r, tr, tr.Rect.Min, tm, tm.Rect.Min, draw.Over)
-			}
-		}
+		world.Render(img, offX, offY)
 
 		w.Screen().CopyRGBA(img, img.Rect)
 		w.FlushImage(img.Rect)
@@ -141,6 +101,10 @@ func Editor(filename string) {
 			}
 
 			world.shrink()
+
+			world.mtx.Lock()
+			world.rendered = nil
+			world.mtx.Unlock()
 		case wde.MouseUpEvent:
 			// TODO
 		case wde.MouseEnteredEvent:

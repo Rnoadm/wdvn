@@ -1,5 +1,13 @@
 package main
 
+import (
+	"image"
+	"image/draw"
+	"sync"
+)
+
+const WorldRenderCacheSize = 64
+
 type WorldTile struct {
 	Tile  int
 	Solid bool
@@ -8,6 +16,9 @@ type WorldTile struct {
 type World struct {
 	Min, Max Coord
 	Tiles    []WorldTile
+
+	rendered map[Coord]*image.RGBA
+	mtx      sync.Mutex
 }
 
 func (w *World) index(x, y int64) (i int, out int64) {
@@ -27,6 +38,69 @@ func (w *World) index(x, y int64) (i int, out int64) {
 	}
 	i = int((x-w.Min.X)*(w.Max.Y-w.Min.Y+1) + (y - w.Min.Y))
 	return
+}
+
+func (w *World) Render(img draw.Image, offX, offY int64) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+
+	if w.rendered == nil {
+		w.rendered = make(map[Coord]*image.RGBA)
+	}
+
+	min, max := Coord{0, 0}, Coord{int64(img.Bounds().Dx()) + TileSize*WorldRenderCacheSize, int64(img.Bounds().Dy()) + TileSize*WorldRenderCacheSize}
+	min = min.Sub(Coord{offX, offY}).Floor(TileSize * WorldRenderCacheSize)
+	max = max.Sub(Coord{offX, offY}).Floor(TileSize * WorldRenderCacheSize)
+	min.X, min.Y = min.X/TileSize/WorldRenderCacheSize, min.Y/TileSize/WorldRenderCacheSize
+	max.X, max.Y = max.X/TileSize/WorldRenderCacheSize, max.Y/TileSize/WorldRenderCacheSize
+
+	for cx := min.X; cx < max.X; cx++ {
+		for cy := min.Y; cy < max.Y; cy++ {
+			cache, ok := w.rendered[Coord{cx, cy}]
+			if !ok {
+				cache = image.NewRGBA(image.Rect(0, 0, TileSize*WorldRenderCacheSize, TileSize*WorldRenderCacheSize))
+				w.rendered[Coord{cx, cy}] = cache
+				for x := 0; x < WorldRenderCacheSize; x++ {
+					for y := 0; y < WorldRenderCacheSize; y++ {
+						tx, ty := cx*WorldRenderCacheSize+int64(x), cy*WorldRenderCacheSize+int64(y)
+						i := 0
+						if w.Solid(tx, ty) {
+							i |= 1 << 0
+						}
+						if w.Solid(tx-1, ty) {
+							i |= 1 << 1
+						}
+						if w.Solid(tx-1, ty-1) {
+							i |= 1 << 2
+						}
+						if w.Solid(tx, ty-1) {
+							i |= 1 << 3
+						}
+						if w.Solid(tx+1, ty-1) {
+							i |= 1 << 4
+						}
+						if w.Solid(tx+1, ty) {
+							i |= 1 << 5
+						}
+						if w.Solid(tx+1, ty+1) {
+							i |= 1 << 6
+						}
+						if w.Solid(tx, ty+1) {
+							i |= 1 << 7
+						}
+						if w.Solid(tx-1, ty+1) {
+							i |= 1 << 8
+						}
+						tr := terrain[w.Tile(tx, ty)]
+						tm := tilemask[i]
+						r := image.Rect(x*TileSize, y*TileSize, x*TileSize+TileSize, y*TileSize+TileSize)
+						draw.DrawMask(cache, r, tr, tr.Rect.Min, tm, tm.Rect.Min, draw.Over)
+					}
+				}
+			}
+			draw.Draw(img, cache.Rect.Add(img.Bounds().Min).Add(image.Pt(int(offX+cx*TileSize*WorldRenderCacheSize), int(offY+cy*TileSize*WorldRenderCacheSize))), cache, image.ZP, draw.Over)
+		}
+	}
 }
 
 func (w *World) Outside(x, y int64) int64 {
