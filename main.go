@@ -10,23 +10,36 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"runtime/pprof"
 )
 
 var (
-	flagHost    = flag.String("host", "", "host this game, like \":7777\"")
-	flagAddress = flag.String("addr", "", "address to connect to, like \"192.168.1.100:7777\"")
-	flagLevel   = flag.String("level", "", "filename of level to play")
-	flagEditor  = flag.String("edit", "", "filename of level to edit")
-	flagProfile = flag.String("prof", "", "start a pprof server for developer use")
+	flagHost       = flag.String("host", "", "host this game, like \":7777\"")
+	flagAddress    = flag.String("addr", "", "address to connect to, like \"192.168.1.100:7777\"")
+	flagLevel      = flag.String("level", "", "filename of level to play")
+	flagEditor     = flag.String("edit", "", "filename of level to edit")
+	flagProfile    = flag.String("prof", "", "start a pprof server for developer use")
+	flagCPUProfile = flag.Bool("cpuprofile", false, "profile to a file instead of starting a server")
 )
 
 func main() {
 	flag.Parse()
 
 	if *flagProfile != "" {
-		go func() {
-			log.Println(http.ListenAndServe(*flagProfile, nil))
-		}()
+		if *flagCPUProfile {
+			f, err := os.Create(*flagProfile)
+			if err != nil {
+				panic(err)
+			}
+			defer f.Close()
+
+			pprof.StartCPUProfile(f)
+			defer pprof.StopCPUProfile()
+		} else {
+			go func() {
+				log.Println(http.ListenAndServe(*flagProfile, nil))
+			}()
+		}
 	}
 
 	if *flagEditor != "" {

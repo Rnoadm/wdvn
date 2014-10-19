@@ -45,6 +45,7 @@ var (
 	Type_Input     = res.Type_Input.Enum()
 	Type_StateDiff = res.Type_StateDiff.Enum()
 	Type_FullState = res.Type_FullState.Enum()
+	Type_World     = res.Type_World.Enum()
 
 	Man_Whip    = res.Man_Whip.Enum()
 	Man_Density = res.Man_Density.Enum()
@@ -306,7 +307,7 @@ func (u *Unit) UpdatePhysics(state *State) {
 		collide.Velocity.X, u.Velocity.X = u.Velocity.X, collide.Velocity.X
 		collide.Velocity.Y, u.Velocity.Y = u.Velocity.Y-Gravity, collide.Velocity.Y-Gravity
 	}
-	if pos := u.Position.Floor(PixelSize * TileSize); state.World.Outside(pos.X/TileSize/PixelSize, pos.Y/TileSize/PixelSize) > 100 {
+	if pos := u.Position.Floor(PixelSize * TileSize); state.world.Outside(pos.X/TileSize/PixelSize, pos.Y/TileSize/PixelSize) > 100 {
 		u.Hurt(state, nil, u.Health)
 	}
 }
@@ -321,11 +322,13 @@ type State struct {
 	WhipEnd    Coord
 	WhipPull   bool
 	SpawnPoint Coord
-	World      *World
+
+	world *World
 }
 
-func (state *State) Update(input *[res.Man_count]res.Packet) {
+func (state *State) Update(input *[res.Man_count]res.Packet, world *World) {
 	state.Tick++
+	state.world = world
 
 	for i := range state.Mans {
 		state.Mans[i].UpdateMan(state, &(*input)[i], res.Man(i))
@@ -458,7 +461,7 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 
 	for x := bounds_min.X; x <= bounds_max.X; x += TileSize * PixelSize {
 		for y := bounds_min.Y; y <= bounds_max.Y; y += TileSize * PixelSize {
-			if state.World.Solid(x/TileSize/PixelSize, y/TileSize/PixelSize) {
+			if state.world.Solid(x/TileSize/PixelSize, y/TileSize/PixelSize) {
 				dist, dx, dy := traceAABB(Coord{x, y}, Coord{x + TileSize*PixelSize, y + TileSize*PixelSize})
 				if dist >= 0 && dist < maxDist {
 					maxDist = dist

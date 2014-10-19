@@ -38,7 +38,7 @@ func Listen(l net.Listener, world *World) {
 		register <- ch
 		connection <- true
 
-		go Serve(conn, ch, broadcast, state, input, &connected, func() {
+		go Serve(conn, ch, broadcast, state, world, input, &connected, func() {
 			go func() {
 				for _ = range ch {
 					// do nothing
@@ -70,7 +70,7 @@ func Multicast(broadcast <-chan *res.Packet, register, unregister <-chan chan<- 
 	}
 }
 
-func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech <-chan State, input chan<- *res.Packet, connected *[res.Man_count]uint64, disconnect func()) {
+func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech <-chan State, world *World, input chan<- *res.Packet, connected *[res.Man_count]uint64, disconnect func()) {
 	defer disconnect()
 	defer conn.Close()
 
@@ -102,6 +102,21 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 	write <- &res.Packet{
 		Type: Type_SelectMan,
 		Man:  pman,
+	}
+
+	// send the world
+	{
+		var buf bytes.Buffer
+
+		err := gob.NewEncoder(&buf).Encode(world)
+		if err != nil {
+			panic(err)
+		}
+
+		write <- &res.Packet{
+			Type: Type_World,
+			Data: buf.Bytes(),
+		}
 	}
 
 	// send full state to the client
@@ -193,7 +208,6 @@ func Manager(in <-chan *res.Packet, out chan<- State, connection <-chan bool, br
 	)
 
 	state.Lives = DefaultLives
-	state.World = world
 	for i := range state.Mans {
 		state.Mans[i].Size = ManSize
 		state.Mans[i].Health = DefaultHealth
@@ -220,7 +234,7 @@ func Manager(in <-chan *res.Packet, out chan<- State, connection <-chan bool, br
 		case <-tick:
 			t := state.Tick
 
-			state.Update(&input)
+			state.Update(&input, world)
 
 			var buf bytes.Buffer
 			err := gob.NewEncoder(&buf).Encode(&state)

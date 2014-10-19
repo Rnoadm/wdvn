@@ -42,6 +42,7 @@ func Client(conn net.Conn) {
 		input     [res.Man_count]res.Packet
 		inputch   = make(chan *res.Packet, 1)
 		noState   = true
+		world     *World
 	)
 	defer close(inputch)
 	releaseAll := &res.Packet{
@@ -131,6 +132,7 @@ func Client(conn net.Conn) {
 							err = gob.NewDecoder(bytes.NewReader(lastState)).Decode(&newState)
 							if err == nil {
 								state = newState
+								state.world = world
 								lastTick = state.Tick
 								for {
 									select {
@@ -157,7 +159,24 @@ func Client(conn net.Conn) {
 				if err != nil {
 					panic(err)
 				}
+				state.world = world
 				lastState, lastTick, noState = p.GetData(), state.Tick, false
+				for {
+					select {
+					case renderState <- state:
+					case <-renderState:
+						continue
+					}
+					break
+				}
+
+			case res.Type_World:
+				world = new(World)
+				err := gob.NewDecoder(bytes.NewReader(p.GetData())).Decode(&world)
+				if err != nil {
+					panic(err)
+				}
+				state.world = world
 				for {
 					select {
 					case renderState <- state:
@@ -461,7 +480,7 @@ func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, sta
 }
 
 func Render(w wde.Window, me res.Man, state State) {
-	if state.World == nil {
+	if state.world == nil {
 		return
 	}
 
@@ -474,12 +493,12 @@ func Render(w wde.Window, me res.Man, state State) {
 	offY := int64(img.Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
 
 	for i, p := range parallax {
-		for x := img.Rect.Min.X - (int((offX*int64(1+i)/int64(1+len(parallax)))%int64(p.Rect.Dx()))+p.Rect.Dx())%p.Rect.Dx(); x < img.Rect.Max.X; x += p.Rect.Dx() {
+		for x := img.Rect.Min.X - (int((-offX*int64(1+i)/int64(1+len(parallax)))%int64(p.Rect.Dx()))+p.Rect.Dx())%p.Rect.Dx(); x < img.Rect.Max.X; x += p.Rect.Dx() {
 			draw.Draw(img, image.Rect(x, img.Rect.Max.Y-p.Rect.Dy(), img.Rect.Max.X, img.Rect.Max.Y), p, p.Rect.Min, draw.Over)
 		}
 	}
 
-	state.World.Render(img, offX, offY)
+	state.world.Render(img, offX, offY)
 
 	for j := VelocityClones; j >= 0; j-- {
 		for i := range state.Mans {

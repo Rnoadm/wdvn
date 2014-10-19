@@ -28,6 +28,7 @@ const (
 	Type_Input     Type = 2
 	Type_StateDiff Type = 3
 	Type_FullState Type = 4
+	Type_World     Type = 5
 )
 
 var Type_name = map[int32]string{
@@ -36,6 +37,7 @@ var Type_name = map[int32]string{
 	2: "Input",
 	3: "StateDiff",
 	4: "FullState",
+	5: "World",
 }
 var Type_value = map[string]int32{
 	"Ping":      0,
@@ -43,6 +45,7 @@ var Type_value = map[string]int32{
 	"Input":     2,
 	"StateDiff": 3,
 	"FullState": 4,
+	"World":     5,
 }
 
 func (x Type) Enum() *Type {
