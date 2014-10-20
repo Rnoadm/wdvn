@@ -214,22 +214,22 @@ func Manager(in <-chan *res.Packet, out chan<- State, connection <-chan bool, br
 	}
 	state.Mans[res.Man_Whip].UnitData = &WhipMan{
 		ManUnitData: ManUnitData{
-			Man: res.Man_Whip,
+			Man_: res.Man_Whip,
 		},
 	}
 	state.Mans[res.Man_Density].UnitData = &DensityMan{
 		ManUnitData: ManUnitData{
-			Man: res.Man_Density,
+			Man_: res.Man_Density,
 		},
 	}
 	state.Mans[res.Man_Vacuum].UnitData = &VacuumMan{
 		ManUnitData: ManUnitData{
-			Man: res.Man_Vacuum,
+			Man_: res.Man_Vacuum,
 		},
 	}
 	state.Mans[res.Man_Normal].UnitData = &NormalMan{
 		ManUnitData: ManUnitData{
-			Man: res.Man_Normal,
+			Man_: res.Man_Normal,
 		},
 	}
 

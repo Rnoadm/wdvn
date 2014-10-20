@@ -451,7 +451,7 @@ func init() {
 	}
 
 	for i := range fade {
-		fade[i] = image.NewUniform(color.Alpha16{uint16(0xffff * (len(fade) - i) / len(fade))})
+		fade[i] = image.NewUniform(color.Alpha16{uint16(0xffff * (len(fade) - i) / len(fade) * (len(fade) - i) / len(fade))})
 	}
 
 	offscreenfade = image.NewUniform(color.Alpha{0x40})
@@ -511,11 +511,19 @@ func Render(w wde.Window, me res.Man, state State) {
 			pos.X -= u.Velocity.X * i / TicksPerSecond / VelocityClones
 			pos.Y -= u.Velocity.Y * i / TicksPerSecond / VelocityClones
 
-			sprite := u.Sprite()
+			sprite := u.Sprite(&state, u)
 			r := sprite.Rect.Sub(sprite.Rect.Min).Add(image.Point{
 				X: int(pos.X/PixelSize+offX) - sprite.Rect.Dx()/2,
 				Y: int(pos.Y/PixelSize+offY) - sprite.Rect.Dy(),
 			})
+
+			if u.Health <= 0 {
+				if m, ok := u.UnitData.(Man); ok {
+					r.Min.Y = r.Max.Y - int(m.Respawn()-state.Tick)*r.Dy()/RespawnTime
+				} else {
+					return
+				}
+			}
 
 			draw.DrawMask(img, r, sprite, sprite.Rect.Min, fade[i], image.ZP, draw.Over)
 
@@ -541,12 +549,13 @@ func Render(w wde.Window, me res.Man, state State) {
 				draw.Draw(img, image.Rect(-1, -1, 1, 1).Add(image.Point{
 					X: int(target.X/PixelSize + offX),
 					Y: int(target.Y/PixelSize + offY),
-				}), mancolors[i], image.ZP, draw.Over)
+				}), mancolors[m.Man()], image.ZP, draw.Over)
 
 				switch mm := m.(type) {
 				case *WhipMan:
 					if mm.WhipStop != 0 && !mm.WhipEnd.Zero() {
 						gc.SetStrokeColor(color.Black)
+						gc.SetLineWidth(0.5)
 						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
 						gc.LineTo(float64(mm.WhipEnd.X/PixelSize+offX), float64(mm.WhipEnd.Y/PixelSize+offY))
 						gc.Stroke()
@@ -560,6 +569,7 @@ func Render(w wde.Window, me res.Man, state State) {
 		draw.Draw(img, img.Rect, deadhaze, image.ZP, draw.Over)
 	}
 
+	gc.SetStrokeColor(color.Black)
 	gc.SetLineWidth(2)
 	var lives string
 	if state.Lives > 1 {
