@@ -182,7 +182,7 @@ func (m *WhipMan) Update(state *State, u *Unit) {
 			if m.WhipStart < m.WhipStop-WhipTimeMax {
 				m.WhipStart = m.WhipStop - WhipTimeMax
 			}
-			m.WhipEnd, m.WhipTether = Coord{}, Coord{}
+			u.Gravity, m.WhipEnd, m.WhipTether = 0, Coord{}, Coord{}
 			if m.WhipStart < m.WhipStop-WhipTimeMin {
 				stop.X = start.X + int64(float64(delta.X)*WhipDistance/dist)
 				stop.Y = start.Y + int64(float64(delta.Y)*WhipDistance/dist)
