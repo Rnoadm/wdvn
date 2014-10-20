@@ -560,6 +560,13 @@ func Render(w wde.Window, me res.Man, state State) {
 						gc.LineTo(float64(mm.WhipEnd.X/PixelSize+offX), float64(mm.WhipEnd.Y/PixelSize+offY))
 						gc.Stroke()
 					}
+					if mm.WhipStop == 0 && !mm.WhipTether.Zero() {
+						gc.SetStrokeColor(color.Black)
+						gc.SetLineWidth(0.5)
+						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
+						gc.LineTo(float64(mm.WhipTether.X/PixelSize+offX), float64(mm.WhipTether.Y/PixelSize+offY))
+						gc.Stroke()
+					}
 				}
 			}
 		})

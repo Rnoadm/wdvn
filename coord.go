@@ -26,3 +26,7 @@ func (c Coord) Floor(i int64) Coord {
 func (c Coord) Zero() bool {
 	return c == Coord{}
 }
+
+func (c Coord) LengthSquared() int64 {
+	return c.X*c.X + c.Y*c.Y
+}

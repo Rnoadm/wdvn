@@ -99,9 +99,6 @@ func (m *ManUnitData) Update(state *State, u *Unit) {
 		} else {
 			u.Acceleration.Y = -350 * PixelSize
 		}
-		if m.Man() == res.Man_Whip {
-			u.Gravity = 0
-		}
 	} else {
 		u.Acceleration.Y = 0
 	}
@@ -131,10 +128,11 @@ func (m *ManUnitData) Input(p *res.Packet) {
 type WhipMan struct {
 	ManUnitData
 
-	WhipStart uint64
-	WhipStop  uint64
-	WhipEnd   Coord
-	WhipPull  bool
+	WhipStart  uint64
+	WhipStop   uint64
+	WhipEnd    Coord
+	WhipTether Coord
+	WhipPull   bool
 }
 
 func (m *WhipMan) Update(state *State, u *Unit) {
@@ -143,10 +141,18 @@ func (m *WhipMan) Update(state *State, u *Unit) {
 	if m.WhipStop != 0 && m.WhipStop-m.WhipStart < state.Tick-m.WhipStop {
 		m.WhipStart, m.WhipStop, m.WhipEnd = 0, 0, Coord{}
 	}
-	if m.WhipStop == 0 && u.Gravity != 0 {
-		u.Gravity += Gravity / WhipAntiGravityDuration
-		if u.Gravity > 0 {
+	if !m.WhipTether.Zero() {
+		if u.Position.Sub(m.WhipTether).LengthSquared() < WhipDistance*WhipDistance {
+			if u.Position.Y > m.WhipTether.Y {
+				u.Gravity = -Gravity * 9 / 10
+			} else {
+				u.Gravity = 0
+			}
+			u.Velocity.X += (m.WhipTether.X - u.Position.X) / 100
+			u.Velocity.Y += (m.WhipTether.Y - u.Position.Y) / 100
+		} else if m.WhipStop == 0 {
 			u.Gravity = 0
+			m.WhipTether = Coord{}
 		}
 	}
 	m1, m2 := m.Input_.GetMouse1() == res.Button_pressed, m.Input_.GetMouse2() == res.Button_pressed
@@ -166,7 +172,7 @@ func (m *WhipMan) Update(state *State, u *Unit) {
 			if m.WhipStart < m.WhipStop-WhipTimeMax {
 				m.WhipStart = m.WhipStop - WhipTimeMax
 			}
-			m.WhipEnd = Coord{}
+			m.WhipEnd, m.WhipTether = Coord{}, Coord{}
 			if m.WhipStart < m.WhipStop-WhipTimeMin {
 				stop.X = start.X + int64(float64(delta.X)*WhipDistance/dist)
 				stop.Y = start.Y + int64(float64(delta.Y)*WhipDistance/dist)
@@ -187,7 +193,9 @@ func (m *WhipMan) Update(state *State, u *Unit) {
 					if m.WhipPull {
 						u.Velocity.X += int64(float64(-dx) * speed)
 						u.Velocity.Y += int64(float64(-dy) * speed)
-						u.Gravity = -Gravity
+						if collide == nil {
+							m.WhipTether = tr.End
+						}
 					} else if collide != nil {
 						collide.Velocity.X += int64(float64(dx) * speed)
 						collide.Velocity.Y += int64(float64(dy) * speed)
