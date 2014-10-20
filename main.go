@@ -78,12 +78,7 @@ func main() {
 		}
 
 		go Listen(l, level)
-
-		conn, err := net.Dial("tcp", l.Addr().String())
-		if err != nil {
-			panic(err)
-		}
-		go Client(conn)
+		go Client(l.Addr().String())
 
 		wde.Run()
 		return
@@ -98,11 +93,7 @@ func main() {
 		go Listen(l, level)
 	}
 	if *flagAddress != "" {
-		conn, err := net.Dial("tcp", *flagAddress)
-		if err != nil {
-			panic(err)
-		}
-		go Client(conn)
+		go Client(*flagAddress)
 
 		wde.Run()
 	} else if *flagHost != "" {

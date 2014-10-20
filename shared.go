@@ -7,7 +7,6 @@ import (
 	"encoding/gob"
 	"github.com/Rnoadm/wdvn/res"
 	"io"
-	"log"
 	"math"
 	"net"
 	"sort"
@@ -236,28 +235,26 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 	return tr
 }
 
-func Read(conn net.Conn, packets chan<- *res.Packet) {
-	defer close(packets)
-
+func Read(conn net.Conn, packets chan<- *res.Packet, errors chan<- error) {
 	var l [64 / 8]byte
 	for {
 		_, err := io.ReadFull(conn, l[:])
 		if err != nil {
-			log.Println(err)
+			errors <- err
 			return
 		}
 
 		b := make([]byte, binary.LittleEndian.Uint64(l[:]))
 		_, err = io.ReadFull(conn, b)
 		if err != nil {
-			log.Println(err)
+			errors <- err
 			return
 		}
 
 		p := new(res.Packet)
 		err = proto.Unmarshal(b, p)
 		if err != nil {
-			log.Println(err)
+			errors <- err
 			return
 		}
 
@@ -265,12 +262,12 @@ func Read(conn net.Conn, packets chan<- *res.Packet) {
 	}
 }
 
-func Write(conn net.Conn, packets <-chan *res.Packet) {
+func Write(conn net.Conn, packets <-chan *res.Packet, errors chan<- error) {
 	var l [64 / 8]byte
 	for p := range packets {
 		b, err := proto.Marshal(p)
 		if err != nil {
-			log.Println(err)
+			errors <- err
 			return
 		}
 
@@ -281,7 +278,7 @@ func Write(conn net.Conn, packets <-chan *res.Packet) {
 			err = io.ErrShortWrite
 		}
 		if err != nil {
-			log.Println(err)
+			errors <- err
 			return
 		}
 
@@ -290,7 +287,7 @@ func Write(conn net.Conn, packets <-chan *res.Packet) {
 			err = io.ErrShortWrite
 		}
 		if err != nil {
-			log.Println(err)
+			errors <- err
 			return
 		}
 	}

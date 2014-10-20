@@ -74,9 +74,9 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 	defer disconnect()
 	defer conn.Close()
 
-	read, write := make(chan *res.Packet), make(chan *res.Packet)
-	go Read(conn, read)
-	go Write(conn, write)
+	read, write, errors := make(chan *res.Packet), make(chan *res.Packet), make(chan error, 2)
+	go Read(conn, read, errors)
+	go Write(conn, write, errors)
 
 	var man res.Man
 	// check for an empty slot
@@ -144,12 +144,7 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 		case p := <-in:
 			write <- p
 
-		case p, ok := <-read:
-			if !ok {
-				log.Println(conn.RemoteAddr(), man, "disconnected: read error")
-				return
-			}
-
+		case p := <-read:
 			switch p.GetType() {
 			case res.Type_Ping:
 				lastPing = time.Now()
@@ -190,10 +185,14 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 				Type: Type_Ping,
 			})
 
-			if time.Since(lastPing) > time.Second*5 {
+			if time.Since(lastPing) > time.Second*30 {
 				log.Println(conn.RemoteAddr(), man, "disconnected: ping timeout")
 				return
 			}
+
+		case err := <-errors:
+			log.Println(conn.RemoteAddr(), man, "disconnected:", err)
+			return
 		}
 	}
 }

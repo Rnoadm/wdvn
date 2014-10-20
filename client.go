@@ -15,15 +15,42 @@ import (
 	"image/draw"
 	"image/png"
 	"net"
+	"time"
 )
 
-func Client(conn net.Conn) {
-	defer conn.Close()
+func ClientNet(addr string, read chan<- *res.Packet, write <-chan *res.Packet, errors chan<- error) {
+	for {
+		func() {
+			conn, err := net.Dial("tcp", addr)
+			if err != nil {
+				time.Sleep(time.Second)
+				return
+			}
+			defer conn.Close()
 
-	read, write := make(chan *res.Packet), make(chan *res.Packet)
-	go Read(conn, read)
-	go Write(conn, write)
+			readch, writech, errorsch := make(chan *res.Packet), make(chan *res.Packet), make(chan error, 2)
+			defer close(writech)
+			go Read(conn, readch, errorsch)
+			go Write(conn, writech, errorsch)
 
+			for {
+				select {
+				case p := <-write:
+					writech <- p
+
+				case p := <-readch:
+					read <- p
+
+				case err := <-errorsch:
+					errors <- err
+					return
+				}
+			}
+		}()
+	}
+}
+
+func Client(addr string) {
 	defer wde.Stop()
 
 	w, err := wde.NewWindow(800, 300)
@@ -33,6 +60,9 @@ func Client(conn net.Conn) {
 	defer w.Close()
 
 	w.Show()
+
+	read, write, errors := make(chan *res.Packet), make(chan *res.Packet), make(chan error, 2)
+	go ClientNet(addr, read, write, errors)
 
 	var (
 		me        res.Man
@@ -94,11 +124,21 @@ func Client(conn net.Conn) {
 
 	for {
 		select {
-		case p, ok := <-read:
-			if !ok {
-				return
+		case err := <-errors:
+			world = nil
+			state = State{}
+			for {
+				select {
+				case renderState <- state:
+				case <-renderState:
+					continue
+				}
+				break
 			}
+			_ = err
+			// TODO: display error?
 
+		case p := <-read:
 			switch p.GetType() {
 			case res.Type_Ping:
 				go Send(write, p)
@@ -485,14 +525,25 @@ func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, sta
 }
 
 func Render(w wde.Window, me res.Man, state State) {
-	if state.world == nil {
-		return
-	}
-
 	img := image.NewRGBA(w.Screen().Bounds())
 	gc := draw2d.NewGraphicContext(img)
 
 	draw.Draw(img, img.Rect, image.White, image.ZP, draw.Src)
+
+	if state.world == nil || state.Mans[0].UnitData == nil {
+		gc.SetStrokeColor(color.Black)
+		gc.SetLineWidth(2)
+		const text = "Connecting..."
+		left, top, right, bottom := gc.GetStringBounds(text)
+		x := float64(img.Rect.Min.X+img.Rect.Dx()/2) + left/2 - right/2
+		y := float64(img.Rect.Min.Y+img.Rect.Dy()/2) + top/2 - bottom/2
+		gc.StrokeStringAt(text, x, y)
+		gc.FillStringAt(text, x, y)
+
+		w.Screen().CopyRGBA(img, img.Rect)
+		w.FlushImage(img.Rect)
+		return
+	}
 
 	offX := int64(img.Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
 	offY := int64(img.Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
