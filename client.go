@@ -513,7 +513,8 @@ func init() {
 }
 
 func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, state <-chan State) {
-	m, s := <-man, <-state
+	var m res.Man
+	var s State
 	for {
 		Render(w, m, s)
 		select {
