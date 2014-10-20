@@ -302,13 +302,14 @@ func Client(conn net.Conn) {
 }
 
 var (
-	mansprites [res.Man_count][2]*image.RGBA
-	terrain    []*image.RGBA
-	tilemask   [1 << 10]*image.Alpha
-	fade       [VelocityClones + 1]*image.Uniform
-	deadfade   *image.Uniform
-	deadhaze   *image.Uniform
-	parallax   [2]*image.RGBA
+	mansprites    [res.Man_count][2]*image.RGBA
+	mancolors     [res.Man_count]*image.Uniform
+	terrain       []*image.RGBA
+	tilemask      [1 << 10]*image.Alpha
+	fade          [VelocityClones + 1]*image.Uniform
+	offscreenfade *image.Uniform
+	deadhaze      *image.Uniform
+	parallax      [2]*image.RGBA
 )
 
 func init() {
@@ -349,6 +350,10 @@ func init() {
 		mansprites[i][0] = dst.SubImage(r1.Add(image.Pt(0, i*int(ManSize.Y/PixelSize)))).(*image.RGBA)
 		mansprites[i][1] = dst.SubImage(r2.Add(image.Pt(0, i*int(ManSize.Y/PixelSize)))).(*image.RGBA)
 	}
+	mancolors[res.Man_Whip] = image.NewUniform(color.RGBA{192, 0, 0, 255})
+	mancolors[res.Man_Density] = image.NewUniform(color.RGBA{192, 192, 0, 255})
+	mancolors[res.Man_Vacuum] = image.NewUniform(color.RGBA{0, 192, 0, 255})
+	mancolors[res.Man_Normal] = image.NewUniform(color.RGBA{0, 0, 192, 255})
 
 	src, err = png.Decode(bytes.NewReader(res.TerrainPng))
 	if err != nil {
@@ -449,7 +454,7 @@ func init() {
 		fade[i] = image.NewUniform(color.Alpha16{uint16(0xffff * (len(fade) - i) / len(fade))})
 	}
 
-	deadfade = image.NewUniform(color.Alpha{0x40})
+	offscreenfade = image.NewUniform(color.Alpha{0x40})
 	deadhaze = image.NewUniform(color.RGBA{64, 64, 64, 64})
 
 	src, err = png.Decode(bytes.NewReader(res.Parallax0Png))
@@ -500,28 +505,21 @@ func Render(w wde.Window, me res.Man, state State) {
 
 	state.world.Render(img, offX, offY)
 
-	for j := VelocityClones; j >= 0; j-- {
-		for i := range state.Mans {
-			pos := state.Mans[i].Position
-			pos.X -= state.Mans[i].Velocity.X * int64(j) / TicksPerSecond
-			pos.Y -= state.Mans[i].Velocity.Y * int64(j) / TicksPerSecond
+	for i := int64(VelocityClones); i >= 0; i-- {
+		state.EachUnit(func(u *Unit) {
+			pos := u.Position
+			pos.X -= u.Velocity.X * i / TicksPerSecond / VelocityClones
+			pos.Y -= u.Velocity.Y * i / TicksPerSecond / VelocityClones
 
-			k := 0
-			if state.Mans[i].Size == CrouchSize {
-				k = 1
-			}
-
-			sprite := mansprites[i][k]
+			sprite := u.Sprite()
 			r := sprite.Rect.Sub(sprite.Rect.Min).Add(image.Point{
 				X: int(pos.X/PixelSize+offX) - sprite.Rect.Dx()/2,
 				Y: int(pos.Y/PixelSize+offY) - sprite.Rect.Dy(),
 			})
-			if state.Respawn[i] != 0 {
-				r.Min.Y += r.Dy() - r.Dy()*int(state.Respawn[i]-state.Tick)/RespawnTime
-			}
-			draw.DrawMask(img, r, sprite, sprite.Rect.Min, fade[j], image.ZP, draw.Over)
 
-			if j == 0 {
+			draw.DrawMask(img, r, sprite, sprite.Rect.Min, fade[i], image.ZP, draw.Over)
+
+			if m, ok := u.UnitData.(Man); ok && i == 0 {
 				if r.Intersect(img.Rect).Empty() {
 					if r.Min.X < img.Rect.Min.X {
 						r = r.Add(image.Pt(img.Rect.Min.X-r.Min.X, 0))
@@ -536,32 +534,33 @@ func Render(w wde.Window, me res.Man, state State) {
 						r = r.Add(image.Pt(0, img.Rect.Max.Y-r.Max.Y))
 					}
 
-					draw.DrawMask(img, r, sprite, sprite.Rect.Min, deadfade, image.ZP, draw.Over)
+					draw.DrawMask(img, r, sprite, sprite.Rect.Min, offscreenfade, image.ZP, draw.Over)
 				}
 
-				target := state.Mans[i].Target
-				draw.Draw(img, image.Rect(0, 0, 1, 1).Add(image.Point{
+				target := m.Target()
+				draw.Draw(img, image.Rect(-1, -1, 1, 1).Add(image.Point{
 					X: int(target.X/PixelSize + offX),
 					Y: int(target.Y/PixelSize + offY),
-				}), sprite, sprite.Rect.Min, draw.Over)
+				}), mancolors[i], image.ZP, draw.Over)
 
-				switch res.Man(i) {
-				case res.Man_Whip:
-					if state.WhipStop != 0 && !state.WhipEnd.Zero() {
+				switch mm := m.(type) {
+				case *WhipMan:
+					if mm.WhipStop != 0 && !mm.WhipEnd.Zero() {
 						gc.SetStrokeColor(color.Black)
-						gc.MoveTo(float64(pos.X/PixelSize+offX), float64((pos.Y-ManSize.Y/2)/PixelSize+offY))
-						gc.LineTo(float64(state.WhipEnd.X/PixelSize+offX), float64(state.WhipEnd.Y/PixelSize+offY))
+						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
+						gc.LineTo(float64(mm.WhipEnd.X/PixelSize+offX), float64(mm.WhipEnd.Y/PixelSize+offY))
 						gc.Stroke()
 					}
 				}
 			}
-		}
+		})
 	}
 
-	if state.Respawn[me] != 0 {
+	if state.Mans[me].UnitData.(Man).Respawn() != 0 {
 		draw.Draw(img, img.Rect, deadhaze, image.ZP, draw.Over)
 	}
 
+	gc.SetLineWidth(2)
 	var lives string
 	if state.Lives > 1 {
 		lives = fmt.Sprintf("%d Mans", state.Lives)
@@ -571,6 +570,7 @@ func Render(w wde.Window, me res.Man, state State) {
 		lives = "No Mans!!"
 	}
 	left, top, _, _ := gc.GetStringBounds(lives)
+	gc.StrokeStringAt(lives, 2-left, 2-top)
 	gc.FillStringAt(lives, 2-left, 2-top)
 
 	w.Screen().CopyRGBA(img, img.Rect)

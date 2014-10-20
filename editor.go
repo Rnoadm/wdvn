@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/skelterjohn/go.wde"
 	"image"
+	"image/color"
 	"image/draw"
 	"os"
 )
@@ -45,6 +46,9 @@ func Editor(filename string) {
 		img := image.NewRGBA(w.Screen().Bounds())
 		gc := draw2d.NewGraphicContext(img)
 
+		gc.SetStrokeColor(color.Black)
+		gc.SetLineWidth(2)
+
 		draw.Draw(img, img.Rect, image.White, image.ZP, draw.Src)
 
 		offX = int64(img.Rect.Dx()/2) - offX
@@ -55,6 +59,7 @@ func Editor(filename string) {
 		for x := world.Min.X; x <= world.Max.X; x++ {
 			for y := world.Min.Y; y <= world.Max.Y; y++ {
 				if s := world.Special(x, y); s != SpecialTile_None {
+					gc.StrokeStringAt(specialTile_names[s], float64(offX+x*TileSize), float64(offY+y*TileSize+TileSize))
 					gc.FillStringAt(specialTile_names[s], float64(offX+x*TileSize), float64(offY+y*TileSize+TileSize))
 				}
 			}

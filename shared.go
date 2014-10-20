@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"github.com/Rnoadm/wdvn/res"
+	"image"
 	"io"
 	"log"
 	"math"
@@ -14,7 +15,7 @@ import (
 )
 
 const (
-	VelocityClones          = 2
+	VelocityClones          = 8
 	TileSize                = 16
 	PixelSize               = 64
 	Gravity                 = PixelSize * 9                               // per tick
@@ -88,10 +89,232 @@ type Unit struct {
 	Position     Coord
 	Velocity     Coord
 	Acceleration Coord
-	Target       Coord
 	Size         Coord
 	Gravity      int64
 	Health       int64
+	UnitData
+}
+
+type UnitData interface {
+	Update(*State, *Unit)
+	Sprite() *image.RGBA
+}
+
+type Man interface {
+	UnitData
+	Respawn() uint64
+	Target() Coord
+	Input(*res.Packet)
+}
+
+type ManUnitData struct {
+	res.Man
+	Target_    Coord
+	Crouching_ bool
+	Input_     *res.Packet
+	Respawn_   uint64
+}
+
+func (m *ManUnitData) Update(state *State, u *Unit) {
+	if u.Health <= 0 {
+		if m.Respawn_ == 0 {
+			m.Respawn_ = state.Tick + RespawnTime
+		}
+		if m.Respawn_ <= state.Tick && state.Lives > 0 {
+			state.Lives--
+			u.Health = DefaultHealth
+			u.Position = state.SpawnPoint
+			u.Gravity = 0
+			u.Velocity = Coord{}
+			u.Acceleration = Coord{}
+			m.Respawn_ = 0
+		}
+		return
+	}
+
+	onGround := u.OnGround(state)
+
+	if m.Input_.GetKeyLeft() == res.Button_pressed {
+		if m.Input_.GetKeyRight() == res.Button_pressed {
+			u.Acceleration.X = 0
+		} else {
+			if u.Size == CrouchSize {
+				u.Acceleration.X = -1 * PixelSize
+			} else {
+				u.Acceleration.X = -2 * PixelSize
+			}
+		}
+	} else {
+		if m.Input_.GetKeyRight() == res.Button_pressed {
+			if u.Size == CrouchSize {
+				u.Acceleration.X = 1 * PixelSize
+			} else {
+				u.Acceleration.X = 2 * PixelSize
+			}
+		} else {
+			u.Acceleration.X = 0
+		}
+	}
+	if m.Input_.GetKeyDown() == res.Button_pressed {
+		if !m.Crouching_ {
+			u.Size = CrouchSize
+			if !onGround {
+				u.Position.Y += CrouchSize.Y - ManSize.Y
+			}
+			m.Crouching_ = true
+		}
+	} else {
+		if m.Crouching_ {
+			tr := state.Trace(u.Position, u.Position, ManSize, false)
+			collide := tr.Collide(u)
+			if collide == nil && !tr.HitWorld {
+				u.Size = ManSize
+				if !onGround {
+					u.Velocity.Y += Gravity
+				}
+				m.Crouching_ = false
+			}
+		}
+	}
+	if !onGround && m.Man == res.Man_Normal {
+		u.Acceleration.X = 0
+	}
+	if onGround && u.Velocity.Y == 0 && m.Input_.GetKeyUp() == res.Button_pressed {
+		if m.Man == res.Man_Normal {
+			u.Acceleration.Y = -200 * PixelSize
+		} else {
+			u.Acceleration.Y = -350 * PixelSize
+		}
+		if m.Man == res.Man_Whip {
+			u.Gravity = 0
+		}
+	} else {
+		u.Acceleration.Y = 0
+	}
+
+	m.Target_.X = u.Position.X + m.Input_.GetX()*PixelSize
+	m.Target_.Y = u.Position.Y + m.Input_.GetY()*PixelSize
+}
+func (m *ManUnitData) Respawn() uint64 {
+	return m.Respawn_
+}
+func (m *ManUnitData) Sprite() *image.RGBA {
+	if m.Crouching_ {
+		return mansprites[m.Man][1]
+	}
+	return mansprites[m.Man][0]
+}
+func (m *ManUnitData) Target() Coord {
+	return m.Target_
+}
+func (m *ManUnitData) Input(p *res.Packet) {
+	m.Input_ = p
+}
+
+type WhipMan struct {
+	ManUnitData
+
+	WhipStart uint64
+	WhipStop  uint64
+	WhipEnd   Coord
+	WhipPull  bool
+}
+
+func (m *WhipMan) Update(state *State, u *Unit) {
+	m.ManUnitData.Update(state, u)
+
+	if m.WhipStop != 0 && m.WhipStop-m.WhipStart < state.Tick-m.WhipStop {
+		m.WhipStart, m.WhipStop, m.WhipEnd = 0, 0, Coord{}
+	}
+	if m.WhipStop == 0 && u.Gravity != 0 {
+		u.Gravity += Gravity / WhipAntiGravityDuration
+		if u.Gravity > 0 {
+			u.Gravity = 0
+		}
+	}
+	m1, m2 := m.Input_.GetMouse1() == res.Button_pressed, m.Input_.GetMouse2() == res.Button_pressed
+	if m1 || m2 {
+		m.WhipPull = m2
+		if m.WhipStart == 0 {
+			m.WhipStart = state.Tick
+		}
+	} else if m.WhipStart != 0 {
+		if m.WhipStop == 0 {
+			m.WhipStop = state.Tick
+			start, stop := u.Position, m.Target()
+			start.Y -= u.Size.Y / 2
+			delta := stop.Sub(start)
+
+			dist := math.Hypot(float64(delta.X), float64(delta.Y))
+			if m.WhipStart < m.WhipStop-WhipTimeMax {
+				m.WhipStart = m.WhipStop - WhipTimeMax
+			}
+			m.WhipEnd = Coord{}
+			if m.WhipStart < m.WhipStop-WhipTimeMin {
+				stop.X = start.X + int64(float64(delta.X)*WhipDistance/dist)
+				stop.Y = start.Y + int64(float64(delta.Y)*WhipDistance/dist)
+
+				tr := state.Trace(start, stop, Coord{1, 1}, false)
+				collide := tr.Collide(&state.Mans[res.Man_Whip])
+				m.WhipEnd = tr.End
+
+				if collide != nil && !collide.IsMan() {
+					damage := int64(WhipDamageMin + (WhipDamageMax-WhipDamageMin)*(m.WhipStop-m.WhipStart)/(WhipTimeMax-WhipTimeMin))
+					collide.Hurt(state, u, damage)
+				}
+
+				dx, dy := start.X-tr.End.X, start.Y-tr.End.Y
+				dist = math.Hypot(float64(dx), float64(dy))
+				if dist > 0 && (collide != nil || tr.HitWorld) {
+					speed := float64(WhipSpeedMin+(WhipSpeedMax-WhipSpeedMin)*(m.WhipStop-m.WhipStart)/(WhipTimeMax-WhipTimeMin)) / dist
+					if m.WhipPull {
+						u.Velocity.X += int64(float64(-dx) * speed)
+						u.Velocity.Y += int64(float64(-dy) * speed)
+						u.Gravity = -Gravity
+					} else if collide != nil {
+						collide.Velocity.X += int64(float64(dx) * speed)
+						collide.Velocity.Y += int64(float64(dy) * speed)
+					}
+				}
+			}
+		}
+	}
+}
+
+type DensityMan struct {
+	ManUnitData
+}
+
+func (m *DensityMan) Update(state *State, u *Unit) {
+	m.ManUnitData.Update(state, u)
+
+	if m.Input_.GetMouse1() == res.Button_pressed {
+		u.Gravity++
+	}
+	if m.Input_.GetMouse2() == res.Button_pressed {
+		u.Gravity--
+	}
+	if u.Gravity < -Gravity {
+		u.Gravity = -Gravity
+	}
+	if u.Gravity > Gravity {
+		u.Gravity = Gravity
+	}
+}
+
+type VacuumMan struct {
+	ManUnitData
+}
+
+type NormalMan struct {
+	ManUnitData
+}
+
+func init() {
+	gob.Register((*WhipMan)(nil))
+	gob.Register((*DensityMan)(nil))
+	gob.Register((*VacuumMan)(nil))
+	gob.Register((*NormalMan)(nil))
 }
 
 func (u *Unit) OnGround(state *State) bool {
@@ -104,169 +327,14 @@ func (u *Unit) Hurt(state *State, by *Unit, amount int64) {
 	u.Health -= amount
 }
 
-func (u *Unit) IsMan(state *State) bool {
-	for i := range state.Mans {
-		if u == &state.Mans[i] {
-			return true
-		}
-	}
-	return false
+func (u *Unit) IsMan() bool {
+	_, ok := u.UnitData.(Man)
+	return ok
 }
 
-func (u *Unit) UpdateMan(state *State, input *res.Packet, man res.Man) {
-	if u.Health <= 0 {
-		if state.Respawn[man] == 0 {
-			state.Respawn[man] = state.Tick + RespawnTime
-		}
-		if state.Respawn[man] <= state.Tick && state.Lives > 0 {
-			state.Lives--
-			u.Health = DefaultHealth
-			u.Position = state.SpawnPoint
-			u.Gravity = 0
-			u.Velocity = Coord{}
-			u.Acceleration = Coord{}
-			state.Respawn[man] = 0
-		}
-		return
-	}
+func (u *Unit) Update(state *State) {
+	u.UnitData.Update(state, u)
 
-	onGround := u.OnGround(state)
-
-	if input.GetKeyLeft() == res.Button_pressed {
-		if input.GetKeyRight() == res.Button_pressed {
-			u.Acceleration.X = 0
-		} else {
-			if u.Size == CrouchSize {
-				u.Acceleration.X = -1 * PixelSize
-			} else {
-				u.Acceleration.X = -2 * PixelSize
-			}
-		}
-	} else {
-		if input.GetKeyRight() == res.Button_pressed {
-			if u.Size == CrouchSize {
-				u.Acceleration.X = 1 * PixelSize
-			} else {
-				u.Acceleration.X = 2 * PixelSize
-			}
-		} else {
-			u.Acceleration.X = 0
-		}
-	}
-	if input.GetKeyDown() == res.Button_pressed {
-		if u.Size == ManSize {
-			u.Size = CrouchSize
-			if !onGround {
-				u.Position.Y += CrouchSize.Y - ManSize.Y
-			}
-		}
-	} else {
-		if u.Size == CrouchSize {
-			tr := state.Trace(u.Position, u.Position, ManSize, false)
-			collide := tr.Collide(u)
-			if collide == nil && !tr.HitWorld {
-				u.Size = ManSize
-				if !onGround {
-					u.Velocity.Y += Gravity
-				}
-			}
-		}
-	}
-	if !onGround && man == res.Man_Normal {
-		u.Acceleration.X = 0
-	}
-	if onGround && u.Velocity.Y == 0 && input.GetKeyUp() == res.Button_pressed {
-		if man == res.Man_Normal {
-			u.Acceleration.Y = -200 * PixelSize
-		} else {
-			u.Acceleration.Y = -350 * PixelSize
-		}
-		if man == res.Man_Whip {
-			u.Gravity = 0
-		}
-	} else {
-		u.Acceleration.Y = 0
-	}
-	if man == res.Man_Whip {
-		if state.WhipStop != 0 && state.WhipStop-state.WhipStart < state.Tick-state.WhipStop {
-			state.WhipStart, state.WhipStop, state.WhipEnd = 0, 0, Coord{}
-		}
-		if state.WhipStop == 0 && state.Mans[res.Man_Whip].Gravity != 0 {
-			state.Mans[res.Man_Whip].Gravity += Gravity / WhipAntiGravityDuration
-			if state.Mans[res.Man_Whip].Gravity > 0 {
-				state.Mans[res.Man_Whip].Gravity = 0
-			}
-		}
-		m1, m2 := input.GetMouse1() == res.Button_pressed, input.GetMouse2() == res.Button_pressed
-		if m1 || m2 {
-			state.WhipPull = m2
-			if state.WhipStart == 0 {
-				state.WhipStart = state.Tick
-			}
-		} else if state.WhipStart != 0 {
-			if state.WhipStop == 0 {
-				state.WhipStop = state.Tick
-				start, stop := state.Mans[res.Man_Whip].Position, state.Mans[res.Man_Whip].Target
-				start.Y -= ManSize.Y / 2
-				delta := stop.Sub(start)
-
-				dist := math.Hypot(float64(delta.X), float64(delta.Y))
-				if state.WhipStart < state.WhipStop-WhipTimeMax {
-					state.WhipStart = state.WhipStop - WhipTimeMax
-				}
-				state.WhipEnd = Coord{}
-				if state.WhipStart < state.WhipStop-WhipTimeMin {
-					stop.X = start.X + int64(float64(delta.X)*WhipDistance/dist)
-					stop.Y = start.Y + int64(float64(delta.Y)*WhipDistance/dist)
-
-					tr := state.Trace(start, stop, Coord{1, 1}, false)
-					u := tr.Collide(&state.Mans[res.Man_Whip])
-					state.WhipEnd = tr.End
-
-					if u != nil && !u.IsMan(state) {
-						damage := int64(WhipDamageMin + (WhipDamageMax-WhipDamageMin)*(state.WhipStop-state.WhipStart)/(WhipTimeMax-WhipTimeMin))
-						u.Hurt(state, &state.Mans[res.Man_Whip], damage)
-					}
-
-					dx, dy := start.X-tr.End.X, start.Y-tr.End.Y
-					dist = math.Hypot(float64(dx), float64(dy))
-					if dist > 0 && (u != nil || tr.HitWorld) {
-						speed := float64(WhipSpeedMin+(WhipSpeedMax-WhipSpeedMin)*(state.WhipStop-state.WhipStart)/(WhipTimeMax-WhipTimeMin)) / dist
-						if state.WhipPull {
-							state.Mans[res.Man_Whip].Velocity.X += int64(float64(-dx) * speed)
-							state.Mans[res.Man_Whip].Velocity.Y += int64(float64(-dy) * speed)
-							state.Mans[res.Man_Whip].Gravity = -Gravity
-						} else if u != nil {
-							u.Velocity.X += int64(float64(dx) * speed)
-							u.Velocity.Y += int64(float64(dy) * speed)
-						}
-					}
-				}
-			}
-		}
-	}
-	if man == res.Man_Density {
-		if input.GetMouse1() == res.Button_pressed {
-			u.Gravity++
-		}
-		if input.GetMouse2() == res.Button_pressed {
-			u.Gravity--
-		}
-		if u.Gravity < -Gravity {
-			u.Gravity = -Gravity
-		}
-		if u.Gravity > Gravity {
-			u.Gravity = Gravity
-		}
-	}
-
-	u.UpdatePhysics(state)
-
-	u.Target.X = u.Position.X + input.GetX()*PixelSize
-	u.Target.Y = u.Position.Y + input.GetY()*PixelSize
-}
-
-func (u *Unit) UpdatePhysics(state *State) {
 	onGround := u.OnGround(state)
 
 	if onGround && u.Velocity.Y > 0 {
@@ -359,7 +427,7 @@ func (u *Unit) UpdatePhysics(state *State) {
 	}
 	u.Position = tr.End
 	if collide != nil {
-		if !u.IsMan(state) || !collide.IsMan(state) {
+		if !u.IsMan() || !collide.IsMan() {
 			u.Hurt(state, collide, 1)
 			collide.Hurt(state, u, 1)
 			u.Velocity.X, u.Velocity.Y = u.Velocity.X*2, u.Velocity.Y*2
@@ -377,14 +445,15 @@ type State struct {
 	Tick       uint64
 	Lives      uint64
 	Mans       [res.Man_count]Unit
-	Respawn    [res.Man_count]uint64
-	WhipStart  uint64
-	WhipStop   uint64
-	WhipEnd    Coord
-	WhipPull   bool
 	SpawnPoint Coord
 
 	world *World
+}
+
+func (state *State) EachUnit(f func(*Unit)) {
+	for i := range state.Mans {
+		f(&state.Mans[i])
+	}
 }
 
 func (state *State) Update(input *[res.Man_count]res.Packet, world *World) {
@@ -392,8 +461,12 @@ func (state *State) Update(input *[res.Man_count]res.Packet, world *World) {
 	state.world = world
 
 	for i := range state.Mans {
-		state.Mans[i].UpdateMan(state, &(*input)[i], res.Man(i))
+		state.Mans[i].UnitData.(Man).Input(&(*input)[i])
 	}
+
+	state.EachUnit(func(u *Unit) {
+		u.Update(state)
+	})
 }
 
 type TraceUnit struct {
