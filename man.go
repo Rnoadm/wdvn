@@ -72,9 +72,6 @@ func (m *ManUnitData) Update(state *State, u *Unit) {
 	if m.Input_.GetKeyDown() == res.Button_pressed {
 		if !m.Crouching_ {
 			u.Size = CrouchSize
-			if !onGround {
-				u.Position.Y += CrouchSize.Y - ManSize.Y
-			}
 			m.Crouching_ = true
 		}
 	} else {
@@ -83,9 +80,6 @@ func (m *ManUnitData) Update(state *State, u *Unit) {
 			collide := tr.Collide(u)
 			if collide == nil && !tr.HitWorld {
 				u.Size = ManSize
-				if !onGround {
-					u.Velocity.Y += Gravity
-				}
 				m.Crouching_ = false
 			}
 		}
