@@ -71,12 +71,13 @@ func (m *ManUnitData) Update(state *State, u *Unit) {
 	}
 	if m.Input_.GetKeyDown() == res.Button_pressed {
 		if !m.Crouching_ {
+			u.Position = u.Position.Sub(ManSize.Sub(CrouchSize))
 			u.Size = CrouchSize
 			m.Crouching_ = true
 		}
 	} else {
 		if m.Crouching_ {
-			tr := state.Trace(u.Position, u.Position, ManSize, false)
+			tr := state.Trace(u.Position, u.Position.Sub(ManSize.Sub(CrouchSize)), CrouchSize, false)
 			collide := tr.Collide(u)
 			if collide == nil && !tr.HitWorld {
 				u.Size = ManSize
@@ -129,6 +130,17 @@ type WhipMan struct {
 	WhipPull   bool
 }
 
+func (m *WhipMan) UpdateDead(state *State, u *Unit) {
+	m.ManUnitData.UpdateDead(state, u)
+
+	m.WhipStart = 0
+	m.WhipStop = 0
+	m.WhipEnd = Coord{}
+	m.WhipTether = Coord{}
+	m.WhipPull = false
+	u.Gravity = 0
+}
+
 func (m *WhipMan) Update(state *State, u *Unit) {
 	m.ManUnitData.Update(state, u)
 
@@ -137,13 +149,17 @@ func (m *WhipMan) Update(state *State, u *Unit) {
 	}
 	if !m.WhipTether.Zero() {
 		if u.Position.Sub(m.WhipTether).LengthSquared() < WhipDistance*WhipDistance {
-			if u.Position.Y > m.WhipTether.Y {
-				u.Gravity = -Gravity * 9 / 10
-			} else {
-				u.Gravity = 0
+			if !u.OnGround(state) {
+				if u.Position.Y > m.WhipTether.Y {
+					u.Gravity = -Gravity * 9 / 10
+				} else {
+					u.Gravity = 0
+				}
+				u.Velocity.X += (m.WhipTether.X - u.Position.X) / 100
+				u.Velocity.Y += (m.WhipTether.Y - u.Position.Y) / 100
+				u.Acceleration.X /= 10
+				u.Acceleration.Y /= 10
 			}
-			u.Velocity.X += (m.WhipTether.X - u.Position.X) / 100
-			u.Velocity.Y += (m.WhipTether.Y - u.Position.Y) / 100
 		} else if m.WhipStop == 0 {
 			u.Gravity = 0
 			m.WhipTether = Coord{}
