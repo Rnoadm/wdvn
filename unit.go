@@ -1,7 +1,10 @@
 package main
 
 import (
+	"github.com/dustin/go-humanize"
 	"image"
+	"image/color"
+	"math/rand"
 )
 
 type Unit struct {
@@ -19,6 +22,7 @@ type UnitData interface {
 	UpdateDead(*State, *Unit)
 	Sprite(*State, *Unit) *image.RGBA
 	Mass(*State, *Unit) int64
+	Color() color.RGBA
 }
 
 func (u *Unit) OnGround(state *State) (bool, SpecialTile) {
@@ -28,9 +32,21 @@ func (u *Unit) OnGround(state *State) (bool, SpecialTile) {
 }
 
 func (u *Unit) Hurt(state *State, by *Unit, amount int64) {
-	if amount < 0 {
+	if amount <= 0 || u.Health <= 0 {
 		return
 	}
+	c := color.RGBA{96, 96, 96, 255}
+	if by != nil {
+		c = by.Color()
+	}
+	state.Floaters = append(state.Floaters, Floater{
+		S:  humanize.Comma(amount),
+		Fg: u.Color(),
+		Bg: c,
+		X:  u.Position.X - u.Size.X/2 + rand.Int63n(u.Size.X),
+		Y:  u.Position.Y - rand.Int63n(u.Size.Y),
+		T:  state.Tick,
+	})
 	if u.Health < amount {
 		amount = u.Health
 	}
@@ -132,16 +148,16 @@ func (u *Unit) Update(state *State) {
 		case SpecialTile_None:
 			switch tr.Side {
 			case SideLeft:
-				u.Hurt(state, nil, u.Velocity.X*u.Mass(state, u)/TileSize/PixelSize)
+				u.Hurt(state, nil, u.Velocity.X*u.Mass(state, u)/DamageFactor)
 				u.Velocity.X = 0
 			case SideRight:
-				u.Hurt(state, nil, -u.Velocity.X*u.Mass(state, u)/TileSize/PixelSize)
+				u.Hurt(state, nil, -u.Velocity.X*u.Mass(state, u)/DamageFactor)
 				u.Velocity.X = 0
 			case SideTop:
-				u.Hurt(state, nil, u.Velocity.Y*u.Mass(state, u)/TileSize/PixelSize)
+				u.Hurt(state, nil, u.Velocity.Y*u.Mass(state, u)/DamageFactor)
 				u.Velocity.Y = 0
 			case SideBottom:
-				u.Hurt(state, nil, u.Velocity.Y*u.Mass(state, u)/TileSize/PixelSize)
+				u.Hurt(state, nil, -u.Velocity.Y*u.Mass(state, u)/DamageFactor)
 				u.Velocity.Y = 0
 			}
 		case SpecialTile_Bounce:
@@ -189,11 +205,11 @@ func (u *Unit) Update(state *State) {
 			if v2 < 0 {
 				v2 = -v2
 			}
-			u.Hurt(state, nil, v1*collide.Mass(state, u)/TileSize/PixelSize)
-			collide.Hurt(state, nil, v2*u.Mass(state, u)/TileSize/PixelSize)
+			u.Hurt(state, nil, v1*collide.Mass(state, u)/DamageFactor)
+			collide.Hurt(state, nil, v2*u.Mass(state, u)/DamageFactor)
 		case SideTop, SideBottom:
 			v1, v2 := weightedSwap(u.Velocity.Y, collide.Velocity.Y)
-			u.Velocity.X, collide.Velocity.X = v1, v2
+			u.Velocity.Y, collide.Velocity.Y = v1, v2
 			v1, v2 = v1-v2, v2-v1
 			if v1 < 0 {
 				v1 = -v1
@@ -201,8 +217,8 @@ func (u *Unit) Update(state *State) {
 			if v2 < 0 {
 				v2 = -v2
 			}
-			u.Hurt(state, nil, v1*collide.Mass(state, u)/TileSize/PixelSize)
-			collide.Hurt(state, nil, v2*u.Mass(state, u)/TileSize/PixelSize)
+			u.Hurt(state, nil, v1*collide.Mass(state, u)/DamageFactor)
+			collide.Hurt(state, nil, v2*u.Mass(state, u)/DamageFactor)
 		}
 	}
 	if pos := u.Position.Floor(PixelSize * TileSize); state.world.Outside(pos.X/TileSize/PixelSize, pos.Y/TileSize/PixelSize) > 100 {

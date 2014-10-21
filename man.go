@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"github.com/Rnoadm/wdvn/res"
 	"image"
+	"image/color"
 	"math"
 )
 
@@ -100,6 +101,9 @@ func (m *ManUnitData) Update(state *State, u *Unit) {
 
 	m.Target_.X = u.Position.X + m.Input_.GetX()*PixelSize
 	m.Target_.Y = u.Position.Y + m.Input_.GetY()*PixelSize
+}
+func (m *ManUnitData) Color() color.RGBA {
+	return mancolors[m.Man()].C.(color.RGBA)
 }
 func (m *ManUnitData) Mass(state *State, u *Unit) int64 {
 	return 1000

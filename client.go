@@ -119,14 +119,15 @@ func Client(addr string) {
 		}
 	}()
 
-	renderResize, renderMan, renderState := make(chan struct{}, 1), make(chan res.Man, 1), make(chan State, 1)
-	go RenderThread(w, renderResize, renderMan, renderState)
+	renderResize, renderMan, renderState, renderError := make(chan struct{}, 1), make(chan res.Man, 1), make(chan State, 1), make(chan error, 1)
+	go RenderThread(w, renderResize, renderMan, renderState, renderError)
 
 	for {
 		select {
 		case err := <-errors:
 			world = nil
 			state = State{}
+			noState = true
 			for {
 				select {
 				case renderState <- state:
@@ -135,8 +136,14 @@ func Client(addr string) {
 				}
 				break
 			}
-			_ = err
-			// TODO: display error?
+			for {
+				select {
+				case renderError <- err:
+				case <-renderError:
+					continue
+				}
+				break
+			}
 
 		case p := <-read:
 			switch p.GetType() {
@@ -512,26 +519,29 @@ func init() {
 	draw.Draw(parallax[1], parallax[1].Rect, src, parallax[1].Rect.Min, draw.Src)
 }
 
-func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, state <-chan State) {
+func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, state <-chan State, err <-chan error) {
 	var m res.Man
 	var s State
+	var e error
 	for {
-		Render(w, m, s)
+		Render(w, m, s, e)
 		select {
 		case m = <-man:
 		case s = <-state:
+		case e = <-err:
 		case <-repaint:
 		}
 	}
 }
 
-func Render(w wde.Window, me res.Man, state State) {
+func Render(w wde.Window, me res.Man, state State, err error) {
 	img := image.NewRGBA(w.Screen().Bounds())
 	gc := draw2d.NewGraphicContext(img)
 
 	draw.Draw(img, img.Rect, image.White, image.ZP, draw.Src)
 
 	if state.world == nil || state.Mans[0].UnitData == nil {
+		gc.SetFillColor(color.White)
 		gc.SetStrokeColor(color.Black)
 		gc.SetLineWidth(2)
 		const text = "Connecting..."
@@ -540,6 +550,14 @@ func Render(w wde.Window, me res.Man, state State) {
 		y := float64(img.Rect.Min.Y+img.Rect.Dy()/2) + top/2 - bottom/2
 		gc.StrokeStringAt(text, x, y)
 		gc.FillStringAt(text, x, y)
+
+		if err != nil {
+			str := err.Error()
+			left, _, _, bottom = gc.GetStringBounds(str)
+			x, y = float64(img.Rect.Min.X)-left+2, float64(img.Rect.Max.Y)-bottom-2
+			gc.StrokeStringAt(str, x, y)
+			gc.FillStringAt(str, x, y)
+		}
 
 		w.Screen().CopyRGBA(img, img.Rect)
 		w.FlushImage(img.Rect)
@@ -634,10 +652,34 @@ func Render(w wde.Window, me res.Man, state State) {
 		})
 	}
 
+	for _, f := range state.Floaters {
+		t := state.Tick - f.T
+		fg, bg := f.Fg, f.Bg
+		gc.SetLineWidth(2)
+		left, top, right, bottom := gc.GetStringBounds(f.S)
+		x := float64(f.X/PixelSize+offX) + left/2 - right/2
+		y := float64(f.Y/PixelSize+offY) + top/2 - bottom/2 - float64(t)
+		if t > FloaterFadeStart {
+			fg.R -= uint8(uint64(fg.R) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
+			fg.G -= uint8(uint64(fg.G) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
+			fg.B -= uint8(uint64(fg.B) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
+			fg.A -= uint8(uint64(fg.A) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
+			bg.R -= uint8(uint64(bg.R) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
+			bg.G -= uint8(uint64(bg.G) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
+			bg.B -= uint8(uint64(bg.B) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
+			bg.A -= uint8(uint64(bg.A) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
+		}
+		gc.SetFillColor(fg)
+		gc.SetStrokeColor(bg)
+		gc.StrokeStringAt(f.S, x, y)
+		gc.FillStringAt(f.S, x, y)
+	}
+
 	if state.Mans[me].UnitData.(Man).Respawn() != 0 {
 		draw.Draw(img, img.Rect, deadhaze, image.ZP, draw.Over)
 	}
 
+	gc.SetFillColor(color.White)
 	gc.SetStrokeColor(color.Black)
 	gc.SetLineWidth(2)
 	var lives string

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"github.com/Rnoadm/wdvn/res"
+	"image/color"
 	"io"
 	"math"
 	"net"
@@ -30,7 +31,10 @@ const (
 	WhipDistance     = 10 * TileSize * PixelSize
 	DefaultLives     = 100
 	DefaultHealth    = 10000
+	DamageFactor     = TileSize * PixelSize * 100 // momentum/DamageFactor is damage dealt
 	RespawnTime      = 2 * TicksPerSecond
+	FloaterFadeStart = 0.5 * TicksPerSecond
+	FloaterFadeEnd   = 1.5 * TicksPerSecond
 )
 
 type Side uint8
@@ -68,9 +72,17 @@ type State struct {
 	Tick       uint64
 	Lives      uint64
 	Mans       [res.Man_count]Unit
+	Floaters   []Floater
 	SpawnPoint Coord
 
 	world *World
+}
+
+type Floater struct {
+	S      string
+	Fg, Bg color.RGBA
+	X, Y   int64
+	T      uint64
 }
 
 func (state *State) EachUnit(f func(*Unit)) {
@@ -90,6 +102,14 @@ func (state *State) Update(input *[res.Man_count]res.Packet, world *World) {
 	state.EachUnit(func(u *Unit) {
 		u.Update(state)
 	})
+
+	for i, l := 0, len(state.Floaters); i < l; i++ {
+		if state.Floaters[i].T < state.Tick-FloaterFadeEnd {
+			state.Floaters = append(state.Floaters[:i], state.Floaters[i+1:]...)
+			i--
+			l--
+		}
+	}
 }
 
 type TraceUnit struct {

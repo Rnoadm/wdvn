@@ -6,12 +6,18 @@ import (
 	"github.com/skelterjohn/go.wde"
 	_ "github.com/skelterjohn/go.wde/init"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"runtime/pprof"
+	"time"
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 var (
 	flagHost       = flag.String("host", "", "host this game, like \":7777\"")
