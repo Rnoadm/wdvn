@@ -64,7 +64,7 @@ func Multicast(broadcast <-chan *res.Packet, register, unregister <-chan chan<- 
 
 		case packet := <-broadcast:
 			for ch := range writers {
-				ch <- packet
+				go Send(ch, packet)
 			}
 		}
 	}
@@ -75,6 +75,7 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 	defer conn.Close()
 
 	read, write, errors := make(chan *res.Packet), make(chan *res.Packet), make(chan error, 2)
+	defer close(write)
 	go Read(conn, read, errors)
 	go Write(conn, write, errors)
 
@@ -144,7 +145,14 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 		case p := <-in:
 			write <- p
 
-		case p := <-read:
+		case p, ok := <-read:
+			if !ok {
+				// we will return from the error channel. stop checking for new packets
+				// so we don't busy wait on a closed channel.
+				read = nil
+				continue
+			}
+
 			switch p.GetType() {
 			case res.Type_Ping:
 				lastPing = time.Now()
@@ -185,7 +193,7 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 				Type: Type_Ping,
 			})
 
-			if time.Since(lastPing) > time.Second*30 {
+			if time.Since(lastPing) > time.Second*5 {
 				log.Println(conn.RemoteAddr(), man, "disconnected: ping timeout")
 				return
 			}

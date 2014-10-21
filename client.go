@@ -38,7 +38,11 @@ func ClientNet(addr string, read chan<- *res.Packet, write <-chan *res.Packet, e
 				case p := <-write:
 					writech <- p
 
-				case p := <-readch:
+				case p, ok := <-readch:
+					if !ok {
+						readch = nil
+						continue
+					}
 					read <- p
 
 				case err := <-errorsch:

@@ -282,6 +282,8 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 }
 
 func Read(conn net.Conn, packets chan<- *res.Packet, errors chan<- error) {
+	defer close(packets)
+
 	var l [64 / 8]byte
 	for {
 		_, err := io.ReadFull(conn, l[:])
@@ -309,6 +311,12 @@ func Read(conn net.Conn, packets chan<- *res.Packet, errors chan<- error) {
 }
 
 func Write(conn net.Conn, packets <-chan *res.Packet, errors chan<- error) {
+	defer func() {
+		for _ = range packets {
+			// discard
+		}
+	}()
+
 	var l [64 / 8]byte
 	for p := range packets {
 		b, err := proto.Marshal(p)
