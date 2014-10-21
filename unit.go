@@ -18,6 +18,7 @@ type UnitData interface {
 	Update(*State, *Unit)
 	UpdateDead(*State, *Unit)
 	Sprite(*State, *Unit) *image.RGBA
+	Mass(*State, *Unit) int64
 }
 
 func (u *Unit) OnGround(state *State) (bool, SpecialTile) {
@@ -27,6 +28,12 @@ func (u *Unit) OnGround(state *State) (bool, SpecialTile) {
 }
 
 func (u *Unit) Hurt(state *State, by *Unit, amount int64) {
+	if amount < 0 {
+		return
+	}
+	if u.Health < amount {
+		amount = u.Health
+	}
 	u.Health -= amount
 }
 
@@ -123,15 +130,19 @@ func (u *Unit) Update(state *State) {
 	if collide == nil && tr.HitWorld {
 		switch tr.Special {
 		case SpecialTile_None:
-			switch speed := u.Velocity.LengthSquared() / TileSize / PixelSize / TileSize / PixelSize; {
-			case speed > 100*100:
-				u.Hurt(state, nil, 5)
-			case speed > 75*75:
-				u.Hurt(state, nil, 3)
-			case speed > 50*50:
-				u.Hurt(state, nil, 1)
-			case speed > 25*25:
-				u.Hurt(state, nil, 1)
+			switch tr.Side {
+			case SideLeft:
+				u.Hurt(state, nil, u.Velocity.X*u.Mass(state, u)/TileSize/PixelSize)
+				u.Velocity.X = 0
+			case SideRight:
+				u.Hurt(state, nil, -u.Velocity.X*u.Mass(state, u)/TileSize/PixelSize)
+				u.Velocity.X = 0
+			case SideTop:
+				u.Hurt(state, nil, u.Velocity.Y*u.Mass(state, u)/TileSize/PixelSize)
+				u.Velocity.Y = 0
+			case SideBottom:
+				u.Hurt(state, nil, u.Velocity.Y*u.Mass(state, u)/TileSize/PixelSize)
+				u.Velocity.Y = 0
 			}
 		case SpecialTile_Bounce:
 			switch tr.Side {
@@ -150,28 +161,49 @@ func (u *Unit) Update(state *State) {
 	}
 	u.Position = tr.End
 	if u.Health > 0 && collide != nil {
-		if !u.IsMan() || !collide.IsMan() {
-			u.Hurt(state, collide, 1)
-			collide.Hurt(state, u, 1)
+		if u.IsMan() != collide.IsMan() {
 			u.Velocity.X, u.Velocity.Y = u.Velocity.X*2, u.Velocity.Y*2
 			collide.Velocity.X, collide.Velocity.Y = collide.Velocity.X*2, collide.Velocity.Y*2
 		}
-		switch speed := u.Velocity.Sub(collide.Velocity).LengthSquared() / TileSize / PixelSize / TileSize / PixelSize; {
-		case speed > 100*100:
-			u.Hurt(state, collide, 6)
-			collide.Hurt(state, u, 6)
-		case speed > 75*75:
-			u.Hurt(state, collide, 4)
-			collide.Hurt(state, u, 4)
-		case speed > 50*50:
-			u.Hurt(state, collide, 2)
-			collide.Hurt(state, u, 2)
-		case speed > 25*25:
-			u.Hurt(state, collide, 1)
-			collide.Hurt(state, u, 1)
+		weightedSwap := func(vi1, vi2 int64) (v1, v2 int64) {
+			m1, m2 := u.Mass(state, u), collide.Mass(state, collide)
+			if m1 <= 0 {
+				m1 = 1
+			}
+			if m2 <= 0 {
+				m2 = 1
+			}
+			vm1, vm2 := vi1*m1, vi2*m2
+			v1 = (vm1/3 + vm2*2/3) / m1
+			v2 = (vm1*2/3 + vm2/3) / m2
+			return
 		}
-		collide.Velocity.X, u.Velocity.X = u.Velocity.X*2/3+collide.Velocity.X/3, collide.Velocity.X*2/3+u.Velocity.X/3
-		collide.Velocity.Y, u.Velocity.Y = u.Velocity.Y*2/3+collide.Velocity.Y/3, collide.Velocity.Y*2/3+u.Velocity.Y/3
+		switch tr.Side {
+		case SideLeft, SideRight:
+			v1, v2 := weightedSwap(u.Velocity.X, collide.Velocity.X)
+			u.Velocity.X, collide.Velocity.X = v1, v2
+			v1, v2 = v1-v2, v2-v1
+			if v1 < 0 {
+				v1 = -v1
+			}
+			if v2 < 0 {
+				v2 = -v2
+			}
+			u.Hurt(state, nil, v1*collide.Mass(state, u)/TileSize/PixelSize)
+			collide.Hurt(state, nil, v2*u.Mass(state, u)/TileSize/PixelSize)
+		case SideTop, SideBottom:
+			v1, v2 := weightedSwap(u.Velocity.Y, collide.Velocity.Y)
+			u.Velocity.X, collide.Velocity.X = v1, v2
+			v1, v2 = v1-v2, v2-v1
+			if v1 < 0 {
+				v1 = -v1
+			}
+			if v2 < 0 {
+				v2 = -v2
+			}
+			u.Hurt(state, nil, v1*collide.Mass(state, u)/TileSize/PixelSize)
+			collide.Hurt(state, nil, v2*u.Mass(state, u)/TileSize/PixelSize)
+		}
 	}
 	if pos := u.Position.Floor(PixelSize * TileSize); state.world.Outside(pos.X/TileSize/PixelSize, pos.Y/TileSize/PixelSize) > 100 {
 		u.Hurt(state, nil, u.Health)

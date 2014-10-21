@@ -16,20 +16,20 @@ const (
 	VelocityClones   = 4
 	TileSize         = 16
 	PixelSize        = 64
-	Gravity          = PixelSize * 9                               // per tick
-	MinimumVelocity  = PixelSize * TicksPerSecond / 2              // unit stops moving if on ground
-	TerminalVelocity = 100 * TileSize * PixelSize * TicksPerSecond // unit cannot move faster on x or y than this
-	Friction         = 100                                         // 1/Friction of the velocity is removed per tick
+	Gravity          = PixelSize * 9              // per tick
+	MinimumVelocity  = PixelSize * 20             // unit stops moving if on ground
+	TerminalVelocity = 100 * TileSize * PixelSize // unit cannot move faster on x or y than this
+	Friction         = 100                        // 1/Friction of the velocity is removed per tick
 	TicksPerSecond   = 100
 	WhipTimeMin      = 0.2 * TicksPerSecond
 	WhipTimeMax      = 1.5 * TicksPerSecond
-	WhipDamageMin    = 1
-	WhipDamageMax    = 5
+	WhipDamageMin    = 10
+	WhipDamageMax    = 5000
 	WhipSpeedMin     = 64 * PixelSize
 	WhipSpeedMax     = 512 * PixelSize
 	WhipDistance     = 10 * TileSize * PixelSize
 	DefaultLives     = 100
-	DefaultHealth    = 10
+	DefaultHealth    = 10000
 	RespawnTime      = 2 * TicksPerSecond
 )
 

@@ -101,6 +101,9 @@ func (m *ManUnitData) Update(state *State, u *Unit) {
 	m.Target_.X = u.Position.X + m.Input_.GetX()*PixelSize
 	m.Target_.Y = u.Position.Y + m.Input_.GetY()*PixelSize
 }
+func (m *ManUnitData) Mass(state *State, u *Unit) int64 {
+	return 1000
+}
 func (m *ManUnitData) Man() res.Man {
 	return m.Man_
 }
@@ -235,6 +238,11 @@ func (m *DensityMan) Update(state *State, u *Unit) {
 	if u.Gravity > Gravity {
 		u.Gravity = Gravity
 	}
+}
+
+func (m *DensityMan) Mass(state *State, u *Unit) int64 {
+	mass := m.ManUnitData.Mass(state, u)
+	return mass + mass*u.Gravity/Gravity
 }
 
 type VacuumMan struct {

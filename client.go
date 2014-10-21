@@ -583,8 +583,8 @@ func Render(w wde.Window, me res.Man, state State) {
 				if u.Health > 0 {
 					gc.SetStrokeColor(color.RGBA{255, 0, 0, 255})
 					gc.SetLineWidth(2)
-					gc.MoveTo(float64(pos.X/PixelSize-u.Health+offX), float64(pos.Y/PixelSize+1+offY))
-					gc.LineTo(float64(pos.X/PixelSize+u.Health+offX), float64(pos.Y/PixelSize+1+offY))
+					gc.MoveTo(float64(pos.X/PixelSize-u.Health*int64(r.Dx())/2/DefaultHealth+offX), float64(pos.Y/PixelSize+1+offY))
+					gc.LineTo(float64(pos.X/PixelSize+u.Health*int64(r.Dx())/2/DefaultHealth+offX), float64(pos.Y/PixelSize+1+offY))
 					gc.Stroke()
 				}
 
