@@ -579,45 +579,55 @@ func Render(w wde.Window, me res.Man, state State) {
 
 			draw.DrawMask(img, r, sprite, sprite.Rect.Min, fade[i], image.ZP, draw.Over)
 
-			if m, ok := u.UnitData.(Man); ok && i == 0 {
-				if r.Intersect(img.Rect).Empty() {
-					if r.Min.X < img.Rect.Min.X {
-						r = r.Add(image.Pt(img.Rect.Min.X-r.Min.X, 0))
-					}
-					if r.Max.X > img.Rect.Max.X {
-						r = r.Add(image.Pt(img.Rect.Max.X-r.Max.X, 0))
-					}
-					if r.Min.Y < img.Rect.Min.Y {
-						r = r.Add(image.Pt(0, img.Rect.Min.Y-r.Min.Y))
-					}
-					if r.Max.Y > img.Rect.Max.Y {
-						r = r.Add(image.Pt(0, img.Rect.Max.Y-r.Max.Y))
-					}
-
-					draw.DrawMask(img, r, sprite, sprite.Rect.Min, offscreenfade, image.ZP, draw.Over)
+			if i == 0 {
+				if u.Health > 0 {
+					gc.SetStrokeColor(color.RGBA{255, 0, 0, 255})
+					gc.SetLineWidth(2)
+					gc.MoveTo(float64(pos.X/PixelSize-u.Health+offX), float64(pos.Y/PixelSize+1+offY))
+					gc.LineTo(float64(pos.X/PixelSize+u.Health+offX), float64(pos.Y/PixelSize+1+offY))
+					gc.Stroke()
 				}
 
-				target := m.Target()
-				draw.Draw(img, image.Rect(-1, -1, 1, 1).Add(image.Point{
-					X: int(target.X/PixelSize + offX),
-					Y: int(target.Y/PixelSize + offY),
-				}), mancolors[m.Man()], image.ZP, draw.Over)
+				if m, ok := u.UnitData.(Man); ok {
+					if r.Intersect(img.Rect).Empty() {
+						if r.Min.X < img.Rect.Min.X {
+							r = r.Add(image.Pt(img.Rect.Min.X-r.Min.X, 0))
+						}
+						if r.Max.X > img.Rect.Max.X {
+							r = r.Add(image.Pt(img.Rect.Max.X-r.Max.X, 0))
+						}
+						if r.Min.Y < img.Rect.Min.Y {
+							r = r.Add(image.Pt(0, img.Rect.Min.Y-r.Min.Y))
+						}
+						if r.Max.Y > img.Rect.Max.Y {
+							r = r.Add(image.Pt(0, img.Rect.Max.Y-r.Max.Y))
+						}
 
-				switch mm := m.(type) {
-				case *WhipMan:
-					if mm.WhipStop != 0 && !mm.WhipEnd.Zero() {
-						gc.SetStrokeColor(color.Black)
-						gc.SetLineWidth(0.5)
-						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
-						gc.LineTo(float64(mm.WhipEnd.X/PixelSize+offX), float64(mm.WhipEnd.Y/PixelSize+offY))
-						gc.Stroke()
+						draw.DrawMask(img, r, sprite, sprite.Rect.Min, offscreenfade, image.ZP, draw.Over)
 					}
-					if mm.WhipStop == 0 && !mm.WhipTether.Zero() {
-						gc.SetStrokeColor(color.Black)
-						gc.SetLineWidth(0.5)
-						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
-						gc.LineTo(float64(mm.WhipTether.X/PixelSize+offX), float64(mm.WhipTether.Y/PixelSize+offY))
-						gc.Stroke()
+
+					target := m.Target()
+					draw.Draw(img, image.Rect(-1, -1, 1, 1).Add(image.Point{
+						X: int(target.X/PixelSize + offX),
+						Y: int(target.Y/PixelSize + offY),
+					}), mancolors[m.Man()], image.ZP, draw.Over)
+
+					switch mm := m.(type) {
+					case *WhipMan:
+						if mm.WhipStop != 0 && !mm.WhipEnd.Zero() {
+							gc.SetStrokeColor(color.Black)
+							gc.SetLineWidth(0.5)
+							gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
+							gc.LineTo(float64(mm.WhipEnd.X/PixelSize+offX), float64(mm.WhipEnd.Y/PixelSize+offY))
+							gc.Stroke()
+						}
+						if mm.WhipStop == 0 && !mm.WhipTether.Zero() {
+							gc.SetStrokeColor(color.Black)
+							gc.SetLineWidth(0.5)
+							gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
+							gc.LineTo(float64(mm.WhipTether.X/PixelSize+offX), float64(mm.WhipTether.Y/PixelSize+offY))
+							gc.Stroke()
+						}
 					}
 				}
 			}

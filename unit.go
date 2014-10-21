@@ -20,10 +20,10 @@ type UnitData interface {
 	Sprite(*State, *Unit) *image.RGBA
 }
 
-func (u *Unit) OnGround(state *State) bool {
+func (u *Unit) OnGround(state *State) (bool, SpecialTile) {
 	tr := state.Trace(u.Position, u.Position.Add(Coord{0, 1}), u.Size, false)
 	tr.Collide(u)
-	return tr.End == u.Position
+	return tr.End == u.Position, tr.Special
 }
 
 func (u *Unit) Hurt(state *State, by *Unit, amount int64) {
@@ -44,7 +44,7 @@ func (u *Unit) Update(state *State) {
 		u.Gravity = 0
 	}
 
-	onGround := u.OnGround(state)
+	onGround, special := u.OnGround(state)
 
 	if onGround && u.Velocity.Y > 0 {
 		u.Velocity.Y = 0
@@ -84,9 +84,16 @@ func (u *Unit) Update(state *State) {
 		u.Velocity.Y = 0
 	}
 
+	if onGround {
+		switch special {
+		case SpecialTile_Bounce:
+			u.Velocity.Y = -100 * Gravity
+		}
+	}
+
 	tr := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, u.Velocity.Y / TicksPerSecond}), u.Size, false)
 	collide := tr.Collide(u)
-	if tr.End == u.Position {
+	if u.Health > 0 && tr.End == u.Position {
 		if u.Velocity.Zero() {
 			stuck := state.Trace(tr.End.Add(Coord{0, -u.Size.Y}), tr.End, u.Size, false)
 			collide2 := stuck.Collide(u)
@@ -116,31 +123,52 @@ func (u *Unit) Update(state *State) {
 	if collide == nil && tr.HitWorld {
 		switch tr.Special {
 		case SpecialTile_None:
-			switch speed := (u.Velocity.X*u.Velocity.X + u.Velocity.Y*u.Velocity.Y) / TileSize / PixelSize / TileSize / PixelSize; {
+			switch speed := u.Velocity.LengthSquared() / TileSize / PixelSize / TileSize / PixelSize; {
 			case speed > 100*100:
-				u.Hurt(state, nil, 10)
-			case speed > 85*85:
-				u.Hurt(state, nil, 8)
-			case speed > 70*70:
-				u.Hurt(state, nil, 6)
-			case speed > 55*55:
-				u.Hurt(state, nil, 4)
-			case speed > 30*30:
+				u.Hurt(state, nil, 5)
+			case speed > 75*75:
+				u.Hurt(state, nil, 3)
+			case speed > 50*50:
+				u.Hurt(state, nil, 1)
+			case speed > 25*25:
 				u.Hurt(state, nil, 1)
 			}
 		case SpecialTile_Bounce:
-			u.Velocity.X, u.Velocity.Y = -u.Velocity.X*3/2, -u.Velocity.Y*3/2
+			switch tr.Side {
+			case SideLeft:
+				u.Velocity.X = -100 * Gravity
+			case SideRight:
+				u.Velocity.X = 100 * Gravity
+			case SideTop:
+				u.Velocity.Y = -100 * Gravity
+			case SideBottom:
+				u.Velocity.Y = 100 * Gravity
+			}
 		default:
 			panic("unimplemented special tile type: " + specialTile_names[tr.Special])
 		}
 	}
 	u.Position = tr.End
-	if collide != nil {
+	if u.Health > 0 && collide != nil {
 		if !u.IsMan() || !collide.IsMan() {
 			u.Hurt(state, collide, 1)
 			collide.Hurt(state, u, 1)
 			u.Velocity.X, u.Velocity.Y = u.Velocity.X*2, u.Velocity.Y*2
 			collide.Velocity.X, collide.Velocity.Y = collide.Velocity.X*2, collide.Velocity.Y*2
+		}
+		switch speed := u.Velocity.Sub(collide.Velocity).LengthSquared() / TileSize / PixelSize / TileSize / PixelSize; {
+		case speed > 100*100:
+			u.Hurt(state, collide, 6)
+			collide.Hurt(state, u, 6)
+		case speed > 75*75:
+			u.Hurt(state, collide, 4)
+			collide.Hurt(state, u, 4)
+		case speed > 50*50:
+			u.Hurt(state, collide, 2)
+			collide.Hurt(state, u, 2)
+		case speed > 25*25:
+			u.Hurt(state, collide, 1)
+			collide.Hurt(state, u, 1)
 		}
 		collide.Velocity.X, u.Velocity.X = u.Velocity.X*2/3+collide.Velocity.X/3, collide.Velocity.X*2/3+u.Velocity.X/3
 		collide.Velocity.Y, u.Velocity.Y = u.Velocity.Y*2/3+collide.Velocity.Y/3, collide.Velocity.Y*2/3+u.Velocity.Y/3

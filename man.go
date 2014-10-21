@@ -46,7 +46,7 @@ func (m *ManUnitData) UpdateDead(state *State, u *Unit) {
 }
 
 func (m *ManUnitData) Update(state *State, u *Unit) {
-	onGround := u.OnGround(state)
+	onGround, _ := u.OnGround(state)
 
 	if m.Input_.GetKeyLeft() == res.Button_pressed {
 		if m.Input_.GetKeyRight() == res.Button_pressed {
@@ -149,7 +149,7 @@ func (m *WhipMan) Update(state *State, u *Unit) {
 	}
 	if !m.WhipTether.Zero() {
 		if u.Position.Sub(m.WhipTether).LengthSquared() < WhipDistance*WhipDistance {
-			if !u.OnGround(state) {
+			if ok, _ := u.OnGround(state); !ok {
 				if u.Position.Y > m.WhipTether.Y {
 					u.Gravity = -Gravity * 9 / 10
 				} else {

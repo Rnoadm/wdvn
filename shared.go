@@ -30,7 +30,16 @@ const (
 	WhipDistance     = 10 * TileSize * PixelSize
 	DefaultLives     = 100
 	DefaultHealth    = 10
-	RespawnTime      = 10 * TicksPerSecond
+	RespawnTime      = 2 * TicksPerSecond
+)
+
+type Side uint8
+
+const (
+	SideTop Side = iota
+	SideBottom
+	SideLeft
+	SideRight
 )
 
 var (
@@ -87,6 +96,7 @@ type TraceUnit struct {
 	*Unit
 	Dist int64 // distance squared
 	X, Y int64
+	Side
 }
 
 type Trace struct {
@@ -94,6 +104,7 @@ type Trace struct {
 	Units    []TraceUnit
 	HitWorld bool
 	Special  SpecialTile
+	Side
 }
 
 func (t *Trace) Collide(ignore ...*Unit) *Unit {
@@ -105,6 +116,7 @@ search:
 			}
 		}
 		t.End = Coord{t.Units[i].X, t.Units[i].Y}
+		t.Side = t.Units[i].Side
 		return t.Units[i].Unit
 	}
 	return nil
@@ -121,18 +133,18 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 	delta := end.Sub(start)
 	maxDist := int64(1<<63 - 1)
 
-	traceAABB := func(mins, maxs Coord) (dist, x, y int64) {
+	traceAABB := func(mins, maxs Coord) (dist, x, y int64, side Side) {
 		if delta.X >= 0 && (min.X >= maxs.X || max.X+delta.X <= mins.X) {
-			return -1, 0, 0
+			return -1, 0, 0, 0
 		}
 		if delta.X <= 0 && (min.X+delta.X >= maxs.X || max.X <= mins.X) {
-			return -1, 0, 0
+			return -1, 0, 0, 0
 		}
 		if delta.Y >= 0 && (min.Y >= maxs.Y || max.Y+delta.Y <= mins.Y) {
-			return -1, 0, 0
+			return -1, 0, 0, 0
 		}
 		if delta.Y <= 0 && (min.Y+delta.Y >= maxs.Y || max.Y <= mins.Y) {
-			return -1, 0, 0
+			return -1, 0, 0, 0
 		}
 
 		var xEnter, xExit float64
@@ -163,7 +175,21 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 		exit := math.Min(xExit, yExit)
 
 		if enter < 0 || enter > 1 || enter > exit {
-			return -1, 0, 0
+			return -1, 0, 0, 0
+		}
+
+		if xEnter > yEnter {
+			if delta.X > 0 {
+				side = SideLeft
+			} else {
+				side = SideRight
+			}
+		} else {
+			if delta.Y > 0 {
+				side = SideTop
+			} else {
+				side = SideBottom
+			}
 		}
 
 		x = int64(enter * float64(delta.X))
@@ -177,16 +203,16 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 		return
 	}
 
-	traceUnit := func(u *Unit) (dist, x, y int64) {
+	traceUnit := func(u *Unit) (dist, x, y int64, side Side) {
 		if u.Health <= 0 {
-			return -1, 0, 0
+			return -1, 0, 0, 0
 		}
 
 		mins, maxs := u.Size.Hull()
 		mins = mins.Add(u.Position)
 		maxs = maxs.Add(u.Position)
 
-		dist, x, y = traceAABB(mins, maxs)
+		dist, x, y, side = traceAABB(mins, maxs)
 		return
 	}
 
@@ -211,24 +237,24 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 	for x := bounds_min.X; x <= bounds_max.X; x += TileSize * PixelSize {
 		for y := bounds_min.Y; y <= bounds_max.Y; y += TileSize * PixelSize {
 			if state.world.Solid(x/TileSize/PixelSize, y/TileSize/PixelSize) {
-				dist, dx, dy := traceAABB(Coord{x, y}, Coord{x + TileSize*PixelSize, y + TileSize*PixelSize})
+				dist, dx, dy, side := traceAABB(Coord{x, y}, Coord{x + TileSize*PixelSize, y + TileSize*PixelSize})
 				if dist >= 0 && (dist < maxDist || (dist == maxDist && tr.Special == SpecialTile_None)) {
 					maxDist = dist
 					tr.HitWorld = true
 					tr.End = start.Add(Coord{dx, dy})
 					tr.Special = state.world.Special(x/TileSize/PixelSize, y/TileSize/PixelSize)
+					tr.Side = side
 				}
 			}
 		}
 	}
 
 	if !worldOnly {
-		for i := range state.Mans {
-			u := &state.Mans[i]
-			if dist, x, y := traceUnit(u); dist >= 0 && dist <= maxDist {
-				tr.Units = append(tr.Units, TraceUnit{Unit: u, Dist: dist, X: start.X + x, Y: start.Y + y})
+		state.EachUnit(func(u *Unit) {
+			if dist, x, y, side := traceUnit(u); dist >= 0 && dist <= maxDist {
+				tr.Units = append(tr.Units, TraceUnit{Unit: u, Dist: dist, X: start.X + x, Y: start.Y + y, Side: side})
 			}
-		}
+		})
 
 		sort.Sort(tr)
 	}
