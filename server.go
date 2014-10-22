@@ -20,7 +20,7 @@ func Listen(l net.Listener, world *World) {
 		register   = make(chan chan<- *res.Packet)
 		unregister = make(chan chan<- *res.Packet)
 		input      = make(chan *res.Packet)
-		state      = make(chan State)
+		state      = make(chan (<-chan []byte))
 		connection = make(chan bool)
 	)
 	go Multicast(broadcast, register, unregister)
@@ -70,7 +70,7 @@ func Multicast(broadcast <-chan *res.Packet, register, unregister <-chan chan<- 
 	}
 }
 
-func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech <-chan State, world *World, input chan<- *res.Packet, connected *[res.Man_count]uint64, disconnect func()) {
+func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <-chan <-chan []byte, world *World, input chan<- *res.Packet, connected *[res.Man_count]uint64, disconnect func()) {
 	defer disconnect()
 	defer conn.Close()
 
@@ -121,19 +121,9 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 	}
 
 	// send full state to the client
-	{
-		state := <-statech
-		var buf bytes.Buffer
-
-		err := gob.NewEncoder(&buf).Encode(&state)
-		if err != nil {
-			panic(err)
-		}
-
-		write <- &res.Packet{
-			Type: Type_FullState,
-			Data: buf.Bytes(),
-		}
+	write <- &res.Packet{
+		Type: Type_FullState,
+		Data: <-<-state,
 	}
 
 	ping := time.NewTicker(time.Second)
@@ -173,18 +163,9 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 			case res.Type_FullState:
 				log.Println(conn.RemoteAddr(), "requested full state update")
 
-				state := <-statech
-
-				var buf bytes.Buffer
-
-				err := gob.NewEncoder(&buf).Encode(&state)
-				if err != nil {
-					panic(err)
-				}
-
 				go Send(write, &res.Packet{
 					Type: Type_FullState,
-					Data: buf.Bytes(),
+					Data: <-<-state,
 				})
 			}
 
@@ -205,13 +186,14 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, statech
 	}
 }
 
-func Manager(in <-chan *res.Packet, out chan<- State, connection <-chan bool, broadcast chan<- *res.Packet, world *World) {
+func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan bool, broadcast chan<- *res.Packet, world *World) {
 	var (
 		state            State
 		input            [res.Man_count]res.Packet
 		connection_count int
 		prev             []byte
 		tick             = time.Tick(time.Second / TicksPerSecond)
+		ch               = make(chan []byte)
 	)
 
 	state.Lives = DefaultLives
@@ -239,6 +221,7 @@ func Manager(in <-chan *res.Packet, out chan<- State, connection <-chan bool, br
 			Man_: res.Man_Normal,
 		},
 	}
+	state.Units = make(map[uint64]*Unit)
 
 	for {
 		if connection_count == 0 {
@@ -256,7 +239,13 @@ func Manager(in <-chan *res.Packet, out chan<- State, connection <-chan bool, br
 				proto.Merge(&input[p.GetMan()], p)
 			}
 
-		case out <- state:
+		case out <- ch:
+			var buf bytes.Buffer
+			err := gob.NewEncoder(&buf).Encode(&state)
+			if err != nil {
+				panic(err)
+			}
+			ch <- buf.Bytes()
 
 		case <-tick:
 			t := state.Tick

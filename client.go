@@ -361,6 +361,7 @@ var (
 	offscreenfade *image.Uniform
 	deadhaze      *image.Uniform
 	parallax      [2]*image.RGBA
+	lemonsprite   *image.RGBA
 )
 
 func init() {
@@ -521,6 +522,13 @@ func init() {
 	}
 	parallax[1] = image.NewRGBA(src.Bounds())
 	draw.Draw(parallax[1], parallax[1].Rect, src, parallax[1].Rect.Min, draw.Src)
+
+	src, err = png.Decode(bytes.NewReader(res.LemonPng))
+	if err != nil {
+		panic(err)
+	}
+	lemonsprite = image.NewRGBA(src.Bounds())
+	draw.Draw(lemonsprite, lemonsprite.Rect, src, lemonsprite.Rect.Min, draw.Src)
 }
 
 func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, state <-chan State, err <-chan error) {

@@ -35,6 +35,12 @@ const (
 	RespawnTime      = 2 * TicksPerSecond
 	FloaterFadeStart = 0.5 * TicksPerSecond
 	FloaterFadeEnd   = 1.5 * TicksPerSecond
+	LemonSpeed       = 1000 * PixelSize
+	LemonTime        = 0.3 * TicksPerSecond
+	VacuumHurt       = TicksPerSecond / 5
+	VacuumSpeed      = 100 * PixelSize
+	VacuumDistance   = 1000 * PixelSize
+	VacuumSuck       = 20
 )
 
 type Side uint8
@@ -49,6 +55,7 @@ const (
 var (
 	ManSize    = Coord{30 * PixelSize, 46 * PixelSize}
 	CrouchSize = Coord{30 * PixelSize, 30 * PixelSize}
+	LemonSize  = Coord{16 * PixelSize, 16 * PixelSize}
 )
 
 var (
@@ -74,6 +81,8 @@ type State struct {
 	Mans       [res.Man_count]Unit
 	Floaters   []Floater
 	SpawnPoint Coord
+	Units      map[uint64]*Unit
+	NextUnit   uint64
 
 	world *World
 }
@@ -86,8 +95,20 @@ type Floater struct {
 }
 
 func (state *State) EachUnit(f func(*Unit)) {
+	var ignore *Unit
+	if m, ok := state.Mans[res.Man_Vacuum].UnitData.(*VacuumMan); ok {
+		ignore = m.Held(state)
+	}
+
 	for i := range state.Mans {
-		f(&state.Mans[i])
+		if &state.Mans[i] != ignore {
+			f(&state.Mans[i])
+		}
+	}
+	for _, u := range state.Units {
+		if u != ignore {
+			f(u)
+		}
 	}
 }
 
@@ -281,6 +302,15 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 	return tr
 }
 
+func makeSlice(l uint64) (b []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = r.(error)
+		}
+	}()
+	return make([]byte, l), nil
+}
+
 func Read(conn net.Conn, packets chan<- *res.Packet, errors chan<- error) {
 	defer close(packets)
 
@@ -292,7 +322,11 @@ func Read(conn net.Conn, packets chan<- *res.Packet, errors chan<- error) {
 			return
 		}
 
-		b := make([]byte, binary.LittleEndian.Uint64(l[:]))
+		b, err := makeSlice(binary.LittleEndian.Uint64(l[:]))
+		if err != nil {
+			errors <- err
+			return
+		}
 		_, err = io.ReadFull(conn, b)
 		if err != nil {
 			errors <- err

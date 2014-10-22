@@ -22,6 +22,7 @@ type UnitData interface {
 	UpdateDead(*State, *Unit)
 	Sprite(*State, *Unit) *image.RGBA
 	Mass(*State, *Unit) int64
+	ShowDamage() bool
 	Color() color.RGBA
 }
 
@@ -35,18 +36,20 @@ func (u *Unit) Hurt(state *State, by *Unit, amount int64) {
 	if amount <= 0 || u.Health <= 0 {
 		return
 	}
-	c := color.RGBA{96, 96, 96, 255}
-	if by != nil {
-		c = by.Color()
+	if u.ShowDamage() {
+		c := color.RGBA{96, 96, 96, 255}
+		if by != nil {
+			c = by.Color()
+		}
+		state.Floaters = append(state.Floaters, Floater{
+			S:  humanize.Comma(amount),
+			Fg: u.Color(),
+			Bg: c,
+			X:  u.Position.X - u.Size.X/2 + rand.Int63n(u.Size.X),
+			Y:  u.Position.Y - rand.Int63n(u.Size.Y),
+			T:  state.Tick,
+		})
 	}
-	state.Floaters = append(state.Floaters, Floater{
-		S:  humanize.Comma(amount),
-		Fg: u.Color(),
-		Bg: c,
-		X:  u.Position.X - u.Size.X/2 + rand.Int63n(u.Size.X),
-		Y:  u.Position.Y - rand.Int63n(u.Size.Y),
-		T:  state.Tick,
-	})
 	if u.Health < amount {
 		amount = u.Health
 	}
