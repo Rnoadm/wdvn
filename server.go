@@ -195,30 +195,34 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 		tick             = time.Tick(time.Second / TicksPerSecond)
 		ch               = make(chan []byte)
 	)
-
-	state.Lives = DefaultLives
+	state.world = world
 	for i := range state.Mans {
+		state.Mans[i].Position = state.FindSpawnPosition(ManSize)
 		state.Mans[i].Size = ManSize
-		state.Mans[i].Health = DefaultHealth
+		state.Mans[i].Health = ManHealth
 	}
 	state.Mans[res.Man_Whip].UnitData = &WhipMan{
 		ManUnitData: ManUnitData{
-			Man_: res.Man_Whip,
+			Man_:   res.Man_Whip,
+			Lives_: ManLives,
 		},
 	}
 	state.Mans[res.Man_Density].UnitData = &DensityMan{
 		ManUnitData: ManUnitData{
-			Man_: res.Man_Density,
+			Man_:   res.Man_Density,
+			Lives_: ManLives,
 		},
 	}
 	state.Mans[res.Man_Vacuum].UnitData = &VacuumMan{
 		ManUnitData: ManUnitData{
-			Man_: res.Man_Vacuum,
+			Man_:   res.Man_Vacuum,
+			Lives_: ManLives,
 		},
 	}
 	state.Mans[res.Man_Normal].UnitData = &NormalMan{
 		ManUnitData: ManUnitData{
-			Man_: res.Man_Normal,
+			Man_:   res.Man_Normal,
+			Lives_: ManLives,
 		},
 	}
 	state.Units = make(map[uint64]*Unit)
@@ -250,7 +254,7 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 		case <-tick:
 			t := state.Tick
 
-			state.Update(&input, world)
+			state.Update(&input)
 
 			var buf bytes.Buffer
 			err := gob.NewEncoder(&buf).Encode(&state)

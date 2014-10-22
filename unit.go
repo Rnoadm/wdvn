@@ -119,32 +119,28 @@ func (u *Unit) Update(state *State) {
 
 	tr := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, u.Velocity.Y / TicksPerSecond}), u.Size, false)
 	collide := tr.Collide(u)
-	if u.Health > 0 && tr.End == u.Position {
-		if u.Velocity.Zero() {
-			stuck := state.Trace(tr.End.Add(Coord{0, -u.Size.Y}), tr.End, u.Size, false)
-			collide2 := stuck.Collide(u)
-			if stuck.End != tr.End {
-				tr, collide = stuck, collide2
-			}
+	if u.Health > 0 && tr.End == u.Position && !u.Velocity.Zero() {
+		stuck := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, 0}), u.Size, false)
+		collide2 := stuck.Collide(u)
+		if stuck.End != tr.End {
+			tr, collide = stuck, collide2
 		} else {
-			stuck := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, 0}), u.Size, false)
-			collide2 := stuck.Collide(u)
+			stuck = state.Trace(u.Position, u.Position.Add(Coord{0, u.Velocity.Y / TicksPerSecond}), u.Size, false)
+			collide2 = stuck.Collide(u)
 			if stuck.End != tr.End {
 				tr, collide = stuck, collide2
-			} else {
-				stuck = state.Trace(u.Position, u.Position.Add(Coord{0, u.Velocity.Y / TicksPerSecond}), u.Size, false)
-				collide2 = stuck.Collide(u)
-				if stuck.End != tr.End {
-					tr, collide = stuck, collide2
-				} else {
-					stuck = state.Trace(tr.End.Add(Coord{0, -u.Size.Y}), tr.End, u.Size, false)
-					collide2 = stuck.Collide(u)
-					if stuck.End != tr.End {
-						tr, collide = stuck, collide2
-					}
-				}
 			}
 		}
+	}
+	if tr.End == u.Position && collide != nil {
+		delta := u.Position.Sub(collide.Position)
+		delta.X /= TicksPerSecond
+		delta.Y /= TicksPerSecond
+		if delta.Zero() {
+			delta.X += rand.Int63n(PixelSize*2+1) - PixelSize
+		}
+		stuck := state.Trace(u.Position, u.Position.Add(delta), u.Size, true)
+		tr.End = stuck.End
 	}
 	if collide == nil && tr.HitWorld {
 		switch tr.Special {

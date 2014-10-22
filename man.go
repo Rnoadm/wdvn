@@ -11,6 +11,7 @@ import (
 type Man interface {
 	UnitData
 	Man() res.Man
+	Lives() uint64
 	Respawn() uint64
 	Target() Coord
 	Input(*res.Packet)
@@ -30,16 +31,20 @@ type ManUnitData struct {
 	Crouching_ bool
 	Input_     *res.Packet
 	Respawn_   uint64
+	Lives_     uint64
 }
 
 func (m *ManUnitData) UpdateDead(state *State, u *Unit) {
 	if m.Respawn_ == 0 {
 		m.Respawn_ = state.Tick + RespawnTime
 	}
-	if m.Respawn_ <= state.Tick && state.Lives > 0 {
-		state.Lives--
-		u.Health = DefaultHealth
-		u.Position = state.SpawnPoint
+	if m.Respawn_ <= state.Tick && m.Lives_ > 0 {
+		m.Lives_--
+		u.Health = ManHealth
+		u.Size = Coord{}
+		m.Crouching_ = false
+		u.Position = state.FindSpawnPosition(ManSize)
+		u.Size = ManSize
 		u.Gravity = 0
 		u.Velocity = Coord{}
 		u.Acceleration = Coord{}
@@ -104,7 +109,7 @@ func (m *ManUnitData) Update(state *State, u *Unit) {
 	m.Target_.Y = u.Position.Y + m.Input_.GetY()*PixelSize
 }
 func (m *ManUnitData) Color() color.RGBA {
-	return mancolors[m.Man()].C.(color.RGBA)
+	return mancolors[m.Man()]
 }
 func (m *ManUnitData) ShowDamage() bool {
 	return true
@@ -129,6 +134,9 @@ func (m *ManUnitData) Target() Coord {
 }
 func (m *ManUnitData) Input(p *res.Packet) {
 	m.Input_ = p
+}
+func (m *ManUnitData) Lives() uint64 {
+	return m.Lives_
 }
 
 type WhipMan struct {
@@ -166,10 +174,14 @@ func (m *WhipMan) Update(state *State, u *Unit) {
 				} else {
 					u.Gravity = 0
 				}
+				if u.Velocity.LengthSquared() > TileSize*PixelSize*TileSize*PixelSize {
+					u.Velocity.X = u.Velocity.X * 19 / 20
+					u.Velocity.Y = u.Velocity.Y * 19 / 20
+				}
 				u.Velocity.X += (m.WhipTether.X - u.Position.X) / 100
 				u.Velocity.Y += (m.WhipTether.Y - u.Position.Y) / 100
-				u.Acceleration.X /= 10
-				u.Acceleration.Y /= 10
+				u.Acceleration.X /= 4
+				u.Acceleration.Y /= 4
 			}
 		} else if m.WhipStop == 0 {
 			u.Gravity = 0
@@ -330,8 +342,14 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 			h.Velocity.X = int64(float64(h.Velocity.X) * VacuumSpeed * float64(state.Tick-m.HeldSince_) / dist)
 			h.Velocity.Y = int64(float64(h.Velocity.Y) * VacuumSpeed * float64(state.Tick-m.HeldSince_) / dist)
 			h.Velocity = h.Velocity.Add(u.Velocity)
+			tr := state.Trace(h.Position, h.Position.Add(h.Velocity.Unit()), h.Size, false)
+			collide := tr.Collide(u)
+			if collide == nil && !tr.HitWorld {
+				m.Held_, m.HeldSince_ = 0, 0
+			}
+		} else {
+			m.Held_, m.HeldSince_ = 0, 0
 		}
-		m.Held_, m.HeldSince_ = 0, 0
 	} else if m.Input_.GetMouse1() == res.Button_pressed {
 		if state.Tick-m.LastLemon_ > LemonTime {
 			lemon := &Unit{
@@ -351,7 +369,9 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 			lemon.Velocity.X = int64(float64(lemon.Velocity.X) * LemonSpeed / dist)
 			lemon.Velocity.Y = int64(float64(lemon.Velocity.Y) * LemonSpeed / dist)
 			lemon.Velocity = lemon.Velocity.Add(u.Velocity)
-			if tr := state.Trace(lemon.Position, lemon.Position.Add(lemon.Velocity), lemon.Size, true); tr.End != lemon.Position {
+			tr := state.Trace(lemon.Position, lemon.Position.Add(lemon.Velocity.Unit()), lemon.Size, false)
+			collide := tr.Collide(u)
+			if collide == nil && !tr.HitWorld {
 				state.Units[state.NextUnit] = lemon
 				state.NextUnit++
 			}
@@ -379,7 +399,7 @@ type Lemon struct {
 }
 
 func (*Lemon) Color() color.RGBA {
-	return mancolors[res.Man_Vacuum].C.(color.RGBA)
+	return mancolors[res.Man_Vacuum]
 }
 
 func (*Lemon) ShowDamage() bool {

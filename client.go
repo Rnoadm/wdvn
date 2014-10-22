@@ -354,7 +354,8 @@ func Client(addr string) {
 
 var (
 	mansprites    [res.Man_count][2]*image.RGBA
-	mancolors     [res.Man_count]*image.Uniform
+	mancolors     [res.Man_count]color.RGBA
+	manfills      [res.Man_count]*image.Uniform
 	terrain       []*image.RGBA
 	tilemask      [1 << 10]*image.Alpha
 	fade          [VelocityClones + 1]*image.Uniform
@@ -402,10 +403,13 @@ func init() {
 		mansprites[i][0] = dst.SubImage(r1.Add(image.Pt(0, i*int(ManSize.Y/PixelSize)))).(*image.RGBA)
 		mansprites[i][1] = dst.SubImage(r2.Add(image.Pt(0, i*int(ManSize.Y/PixelSize)))).(*image.RGBA)
 	}
-	mancolors[res.Man_Whip] = image.NewUniform(color.RGBA{192, 0, 0, 255})
-	mancolors[res.Man_Density] = image.NewUniform(color.RGBA{192, 192, 0, 255})
-	mancolors[res.Man_Vacuum] = image.NewUniform(color.RGBA{0, 192, 0, 255})
-	mancolors[res.Man_Normal] = image.NewUniform(color.RGBA{0, 0, 192, 255})
+	mancolors[res.Man_Whip] = color.RGBA{192, 0, 0, 255}
+	mancolors[res.Man_Density] = color.RGBA{128, 128, 0, 255}
+	mancolors[res.Man_Vacuum] = color.RGBA{0, 128, 0, 255}
+	mancolors[res.Man_Normal] = color.RGBA{0, 0, 192, 255}
+	for i := range manfills {
+		manfills[i] = image.NewUniform(mancolors[i])
+	}
 
 	src, err = png.Decode(bytes.NewReader(res.TerrainPng))
 	if err != nil {
@@ -609,55 +613,45 @@ func Render(w wde.Window, me res.Man, state State, err error) {
 
 			draw.DrawMask(img, r, sprite, sprite.Rect.Min, fade[i], image.ZP, draw.Over)
 
-			if i == 0 {
-				if u.Health > 0 {
-					gc.SetStrokeColor(color.RGBA{255, 0, 0, 255})
-					gc.SetLineWidth(2)
-					gc.MoveTo(float64(pos.X/PixelSize-u.Health*int64(r.Dx())/2/DefaultHealth+offX), float64(pos.Y/PixelSize+1+offY))
-					gc.LineTo(float64(pos.X/PixelSize+u.Health*int64(r.Dx())/2/DefaultHealth+offX), float64(pos.Y/PixelSize+1+offY))
-					gc.Stroke()
-				}
-
-				if m, ok := u.UnitData.(Man); ok {
-					if r.Intersect(img.Rect).Empty() {
-						if r.Min.X < img.Rect.Min.X {
-							r = r.Add(image.Pt(img.Rect.Min.X-r.Min.X, 0))
-						}
-						if r.Max.X > img.Rect.Max.X {
-							r = r.Add(image.Pt(img.Rect.Max.X-r.Max.X, 0))
-						}
-						if r.Min.Y < img.Rect.Min.Y {
-							r = r.Add(image.Pt(0, img.Rect.Min.Y-r.Min.Y))
-						}
-						if r.Max.Y > img.Rect.Max.Y {
-							r = r.Add(image.Pt(0, img.Rect.Max.Y-r.Max.Y))
-						}
-
-						draw.DrawMask(img, r, sprite, sprite.Rect.Min, offscreenfade, image.ZP, draw.Over)
+			if m, ok := u.UnitData.(Man); i == 0 && ok {
+				if r.Intersect(img.Rect).Empty() {
+					if r.Min.X < img.Rect.Min.X {
+						r = r.Add(image.Pt(img.Rect.Min.X-r.Min.X, 0))
+					}
+					if r.Max.X > img.Rect.Max.X {
+						r = r.Add(image.Pt(img.Rect.Max.X-r.Max.X, 0))
+					}
+					if r.Min.Y < img.Rect.Min.Y {
+						r = r.Add(image.Pt(0, img.Rect.Min.Y-r.Min.Y))
+					}
+					if r.Max.Y > img.Rect.Max.Y {
+						r = r.Add(image.Pt(0, img.Rect.Max.Y-r.Max.Y))
 					}
 
-					target := m.Target()
-					draw.Draw(img, image.Rect(-1, -1, 1, 1).Add(image.Point{
-						X: int(target.X/PixelSize + offX),
-						Y: int(target.Y/PixelSize + offY),
-					}), mancolors[m.Man()], image.ZP, draw.Over)
+					draw.DrawMask(img, r, sprite, sprite.Rect.Min, offscreenfade, image.ZP, draw.Over)
+				}
 
-					switch mm := m.(type) {
-					case *WhipMan:
-						if mm.WhipStop != 0 && !mm.WhipEnd.Zero() {
-							gc.SetStrokeColor(color.Black)
-							gc.SetLineWidth(0.5)
-							gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
-							gc.LineTo(float64(mm.WhipEnd.X/PixelSize+offX), float64(mm.WhipEnd.Y/PixelSize+offY))
-							gc.Stroke()
-						}
-						if mm.WhipStop == 0 && !mm.WhipTether.Zero() {
-							gc.SetStrokeColor(color.Black)
-							gc.SetLineWidth(0.5)
-							gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
-							gc.LineTo(float64(mm.WhipTether.X/PixelSize+offX), float64(mm.WhipTether.Y/PixelSize+offY))
-							gc.Stroke()
-						}
+				target := m.Target()
+				draw.Draw(img, image.Rect(-1, -1, 1, 1).Add(image.Point{
+					X: int(target.X/PixelSize + offX),
+					Y: int(target.Y/PixelSize + offY),
+				}), manfills[m.Man()], image.ZP, draw.Over)
+
+				switch mm := m.(type) {
+				case *WhipMan:
+					if mm.WhipStop != 0 && !mm.WhipEnd.Zero() {
+						gc.SetStrokeColor(color.Black)
+						gc.SetLineWidth(0.5)
+						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
+						gc.LineTo(float64(mm.WhipEnd.X/PixelSize+offX), float64(mm.WhipEnd.Y/PixelSize+offY))
+						gc.Stroke()
+					}
+					if mm.WhipStop == 0 && !mm.WhipTether.Zero() {
+						gc.SetStrokeColor(color.Black)
+						gc.SetLineWidth(0.5)
+						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
+						gc.LineTo(float64(mm.WhipTether.X/PixelSize+offX), float64(mm.WhipTether.Y/PixelSize+offY))
+						gc.Stroke()
 					}
 				}
 			}
@@ -691,20 +685,41 @@ func Render(w wde.Window, me res.Man, state State, err error) {
 		draw.Draw(img, img.Rect, deadhaze, image.ZP, draw.Over)
 	}
 
-	gc.SetFillColor(color.White)
-	gc.SetStrokeColor(color.Black)
-	gc.SetLineWidth(2)
-	var lives string
-	if state.Lives > 1 {
-		lives = fmt.Sprintf("%d Mans", state.Lives)
-	} else if state.Lives == 1 {
-		lives = "1 Man!"
-	} else {
-		lives = "No Mans!!"
+	for i := range state.Mans {
+		m := state.Mans[i].UnitData.(Man)
+		x := 2.0
+		y := 12.0
+		if i&1 == 1 {
+			y = float64(img.Rect.Dy()) - 24
+		}
+		if i&2 == 2 {
+			x = float64(img.Rect.Dx()) - 112
+		}
+		gc.SetFillColor(color.White)
+		gc.SetStrokeColor(mancolors[i])
+		if state.Mans[i].Health > 0 {
+			gc.SetLineWidth(4)
+			gc.MoveTo(x, y-4)
+			gc.LineTo(x+float64(state.Mans[i].Health*110/ManHealth), y-4)
+			gc.Stroke()
+		} else if m.Respawn() != 0 && m.Lives() > 0 {
+			gc.SetLineWidth(2)
+			respawn := fmt.Sprintf("Respawn in %s", time.Duration(m.Respawn()-state.Tick)*time.Second/TicksPerSecond)
+			gc.StrokeStringAt(respawn, x, y)
+			gc.FillStringAt(respawn, x, y)
+		}
+		gc.SetLineWidth(2)
+		var lives string
+		if l := m.Lives(); l > 1 {
+			lives = fmt.Sprintf("%d Mans", l)
+		} else if l == 1 {
+			lives = "1 Man!"
+		} else {
+			lives = "No Mans!!"
+		}
+		gc.StrokeStringAt(lives, x, y+14)
+		gc.FillStringAt(lives, x, y+14)
 	}
-	left, top, _, _ := gc.GetStringBounds(lives)
-	gc.StrokeStringAt(lives, 2-left, 2-top)
-	gc.FillStringAt(lives, 2-left, 2-top)
 
 	w.Screen().CopyRGBA(img, img.Rect)
 	w.FlushImage(img.Rect)

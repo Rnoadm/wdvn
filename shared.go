@@ -9,6 +9,7 @@ import (
 	"image/color"
 	"io"
 	"math"
+	"math/rand"
 	"net"
 	"sort"
 )
@@ -26,11 +27,11 @@ const (
 	WhipTimeMax      = 1.5 * TicksPerSecond
 	WhipDamageMin    = 10
 	WhipDamageMax    = 5000
-	WhipSpeedMin     = 64 * PixelSize
-	WhipSpeedMax     = 512 * PixelSize
+	WhipSpeedMin     = 200 * PixelSize
+	WhipSpeedMax     = 1500 * PixelSize
 	WhipDistance     = 10 * TileSize * PixelSize
-	DefaultLives     = 100
-	DefaultHealth    = 10000
+	ManLives         = 100
+	ManHealth        = 10000
 	DamageFactor     = TileSize * PixelSize * 100 // momentum/DamageFactor is damage dealt
 	RespawnTime      = 2 * TicksPerSecond
 	FloaterFadeStart = 0.5 * TicksPerSecond
@@ -77,7 +78,6 @@ var (
 
 type State struct {
 	Tick       uint64
-	Lives      uint64
 	Mans       [res.Man_count]Unit
 	Floaters   []Floater
 	SpawnPoint Coord
@@ -92,6 +92,35 @@ type Floater struct {
 	Fg, Bg color.RGBA
 	X, Y   int64
 	T      uint64
+}
+
+func (state *State) FindSpawnPosition(hull Coord) Coord {
+	for i := 0; i < 100; i++ {
+		pos := state.SpawnPoint
+		pos.X += rand.Int63n(hull.X*10+1) - hull.X*5
+		pos.Y += rand.Int63n(hull.Y*10+1) - hull.Y*5
+		tr := state.Trace(state.SpawnPoint, pos, hull, false)
+		if len(tr.Units) == 0 {
+			if tr.End != state.SpawnPoint && tr.HitWorld {
+				return tr.End
+			}
+			pos = tr.End
+			tr = state.Trace(pos, pos.Add(Coord{0, hull.Y * 10}), hull, false)
+			tr.Collide()
+			if tr.HitWorld && tr.End != pos {
+				return tr.End
+			}
+		} else if tr.HitWorld {
+			tr = state.Trace(tr.End, tr.End.Sub(Coord{0, hull.Y * 10}), hull, true)
+			pos = tr.End
+			tr = state.Trace(pos, pos.Add(Coord{0, hull.Y * 10}), hull, false)
+			tr.Collide()
+			if tr.End != pos {
+				return tr.End
+			}
+		}
+	}
+	return state.SpawnPoint
 }
 
 func (state *State) EachUnit(f func(*Unit)) {
@@ -112,9 +141,8 @@ func (state *State) EachUnit(f func(*Unit)) {
 	}
 }
 
-func (state *State) Update(input *[res.Man_count]res.Packet, world *World) {
+func (state *State) Update(input *[res.Man_count]res.Packet) {
 	state.Tick++
-	state.world = world
 
 	for i := range state.Mans {
 		state.Mans[i].UnitData.(Man).Input(&(*input)[i])
@@ -215,7 +243,7 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 		enter := math.Max(xEnter, yEnter)
 		exit := math.Min(xExit, yExit)
 
-		if enter < 0 || enter > 1 || enter > exit {
+		if exit < 0 || enter > 1 || enter > exit {
 			return -1, 0, 0, 0
 		}
 
@@ -237,8 +265,8 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 		y = int64(enter * float64(delta.Y))
 
 		dist = x*x + y*y
-		if dist < 0 {
-			dist = 0
+		if enter < 0 {
+			dist, x, y = 0, 0, 0
 		}
 
 		return
