@@ -20,10 +20,14 @@ func init() {
 }
 
 var (
-	flagHost       = flag.String("host", "", "host this game, like \":7777\"")
-	flagAddress    = flag.String("addr", "", "address to connect to, like \"192.168.1.100:7777\"")
-	flagLevel      = flag.String("level", "", "filename of level to play")
-	flagEditor     = flag.String("edit", "", "filename of level to edit")
+	flagHost    = flag.String("host", "", "host this game, like \":7777\"")
+	flagAddress = flag.String("addr", "", "address to connect to, like \"192.168.1.100:7777\"")
+
+	flagLevel  = flag.String("level", "", "filename of level to play")
+	flagEditor = flag.String("edit", "", "filename of level to edit")
+
+	flagSplitScreen = flag.Bool("ss", false, "render split screen")
+
 	flagProfile    = flag.String("prof", "", "start a pprof server for developer use")
 	flagCPUProfile = flag.Bool("cpuprofile", false, "profile to a file instead of starting a server")
 )

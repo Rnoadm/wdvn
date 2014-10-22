@@ -335,12 +335,32 @@ func Client(addr string) {
 				sendInput(nil)
 			case wde.MouseMovedEvent:
 				width, height := w.Size()
+				if *flagSplitScreen {
+					width /= 2
+					height /= 2
+					if me&1 == 1 {
+						e.Where.Y -= height
+					}
+					if me&2 == 2 {
+						e.Where.X -= width
+					}
+				}
 				sendInput(&res.Packet{
 					X: proto.Int64(int64(e.Where.X - width/2)),
 					Y: proto.Int64(int64(e.Where.Y - height/2)),
 				})
 			case wde.MouseDraggedEvent:
 				width, height := w.Size()
+				if *flagSplitScreen {
+					width /= 2
+					height /= 2
+					if me&1 == 1 {
+						e.Where.Y -= height
+					}
+					if me&2 == 2 {
+						e.Where.X -= width
+					}
+				}
 				sendInput(&res.Packet{
 					X: proto.Int64(int64(e.Where.X - width/2)),
 					Y: proto.Int64(int64(e.Where.Y - height/2)),
@@ -540,7 +560,7 @@ func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, sta
 	var s State
 	var e error
 	for {
-		Render(w, m, s, e)
+		Render(w, m, &s, e)
 		select {
 		case m = <-man:
 		case s = <-state:
@@ -550,7 +570,7 @@ func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, sta
 	}
 }
 
-func Render(w wde.Window, me res.Man, state State, err error) {
+func Render(w wde.Window, me res.Man, state *State, err error) {
 	img := image.NewRGBA(w.Screen().Bounds())
 	gc := draw2d.NewGraphicContext(img)
 
@@ -580,6 +600,76 @@ func Render(w wde.Window, me res.Man, state State, err error) {
 		return
 	}
 
+	if *flagSplitScreen {
+		for i := range state.Mans {
+			r := img.Rect
+			if i&1 == 0 {
+				r.Max.Y -= r.Dy() / 2
+			} else {
+				r.Min.Y += r.Dy() / 2
+			}
+			if i&2 == 0 {
+				r.Max.X -= r.Dx() / 2
+			} else {
+				r.Min.X += r.Dx() / 2
+			}
+			render(img.SubImage(r).(*image.RGBA), res.Man(i), state)
+		}
+		gc.SetLineWidth(1)
+		gc.SetStrokeColor(color.Black)
+		gc.MoveTo(float64(img.Rect.Min.X+img.Rect.Max.X)/2, float64(img.Rect.Min.Y))
+		gc.LineTo(float64(img.Rect.Min.X+img.Rect.Max.X)/2, float64(img.Rect.Max.Y))
+		gc.MoveTo(float64(img.Rect.Min.X), float64(img.Rect.Min.Y+img.Rect.Max.Y)/2)
+		gc.LineTo(float64(img.Rect.Max.X), float64(img.Rect.Min.Y+img.Rect.Max.Y)/2)
+		gc.Stroke()
+	} else {
+		render(img, me, state)
+	}
+
+	for i := range state.Mans {
+		m := state.Mans[i].UnitData.(Man)
+		x := 2.0
+		y := 12.0
+		if i&1 == 1 {
+			y = float64(img.Rect.Dy()) - 24
+		}
+		if i&2 == 2 {
+			x = float64(img.Rect.Dx()) - 112
+		}
+		gc.SetFillColor(color.White)
+		gc.SetStrokeColor(mancolors[i])
+		if state.Mans[i].Health > 0 {
+			gc.SetLineWidth(4)
+			gc.MoveTo(x, y-4)
+			gc.LineTo(x+float64(state.Mans[i].Health*110/ManHealth), y-4)
+			gc.Stroke()
+		} else if m.Respawn() != 0 && m.Lives() > 0 {
+			gc.SetLineWidth(2)
+			respawn := fmt.Sprintf("Respawn in %s", time.Duration(m.Respawn()-state.Tick)*time.Second/TicksPerSecond)
+			gc.StrokeStringAt(respawn, x, y)
+			gc.FillStringAt(respawn, x, y)
+		}
+		gc.SetLineWidth(2)
+		var lives string
+		if l := m.Lives(); l > 1 {
+			lives = fmt.Sprintf("%d Mans", l)
+		} else if l == 1 {
+			lives = "1 Man!"
+		} else {
+			lives = "No Mans!!"
+		}
+		gc.StrokeStringAt(lives, x, y+14)
+		gc.FillStringAt(lives, x, y+14)
+	}
+
+	w.Screen().CopyRGBA(img, img.Rect)
+	w.FlushImage(img.Rect)
+}
+func render(img *image.RGBA, me res.Man, state *State) {
+	img.Rect = img.Rect.Sub(img.Rect.Min)
+
+	gc := draw2d.NewGraphicContext(img)
+
 	offX := int64(img.Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
 	offY := int64(img.Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
 
@@ -597,7 +687,7 @@ func Render(w wde.Window, me res.Man, state State, err error) {
 			pos.X -= u.Velocity.X * i / TicksPerSecond / VelocityClones
 			pos.Y -= u.Velocity.Y * i / TicksPerSecond / VelocityClones
 
-			sprite := u.Sprite(&state, u)
+			sprite := u.Sprite(state, u)
 			r := sprite.Rect.Sub(sprite.Rect.Min).Add(image.Point{
 				X: int(pos.X/PixelSize+offX) - sprite.Rect.Dx()/2,
 				Y: int(pos.Y/PixelSize+offY) - sprite.Rect.Dy(),
@@ -684,43 +774,4 @@ func Render(w wde.Window, me res.Man, state State, err error) {
 	if state.Mans[me].UnitData.(Man).Respawn() != 0 {
 		draw.Draw(img, img.Rect, deadhaze, image.ZP, draw.Over)
 	}
-
-	for i := range state.Mans {
-		m := state.Mans[i].UnitData.(Man)
-		x := 2.0
-		y := 12.0
-		if i&1 == 1 {
-			y = float64(img.Rect.Dy()) - 24
-		}
-		if i&2 == 2 {
-			x = float64(img.Rect.Dx()) - 112
-		}
-		gc.SetFillColor(color.White)
-		gc.SetStrokeColor(mancolors[i])
-		if state.Mans[i].Health > 0 {
-			gc.SetLineWidth(4)
-			gc.MoveTo(x, y-4)
-			gc.LineTo(x+float64(state.Mans[i].Health*110/ManHealth), y-4)
-			gc.Stroke()
-		} else if m.Respawn() != 0 && m.Lives() > 0 {
-			gc.SetLineWidth(2)
-			respawn := fmt.Sprintf("Respawn in %s", time.Duration(m.Respawn()-state.Tick)*time.Second/TicksPerSecond)
-			gc.StrokeStringAt(respawn, x, y)
-			gc.FillStringAt(respawn, x, y)
-		}
-		gc.SetLineWidth(2)
-		var lives string
-		if l := m.Lives(); l > 1 {
-			lives = fmt.Sprintf("%d Mans", l)
-		} else if l == 1 {
-			lives = "1 Man!"
-		} else {
-			lives = "No Mans!!"
-		}
-		gc.StrokeStringAt(lives, x, y+14)
-		gc.FillStringAt(lives, x, y+14)
-	}
-
-	w.Screen().CopyRGBA(img, img.Rect)
-	w.FlushImage(img.Rect)
 }
