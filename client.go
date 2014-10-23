@@ -734,7 +734,7 @@ func render(img *image.RGBA, me res.Man, state *State) {
 			bg.B -= uint8(uint64(bg.B) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
 			bg.A -= uint8(uint64(bg.A) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
 		}
-		RenderText(img, f.S, image.Pt(int(f.X/PixelSize+offX), int(f.Y/PixelSize+offY)), fg, bg, true)
+		RenderText(img, f.S, image.Pt(int(f.X/PixelSize+offX), int(f.Y/PixelSize+offY)-int(t)), fg, bg, true)
 	}
 
 	if state.Mans[me].UnitData.(Man).Respawn() != 0 {
