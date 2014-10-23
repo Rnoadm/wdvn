@@ -116,7 +116,7 @@ func (u *Unit) Update(state *State) {
 		case SpecialTile_Bounce:
 			u.Velocity.Y = -100 * Gravity
 		case SpecialTile_Checkpoint:
-			if m, ok := u.UnitData.(Man); ok {
+			if m, ok := u.UnitData.(Man); ok && u.Health > 0 {
 				pos := u.Position.Floor(TileSize * PixelSize)
 				found := false
 				for x := int64(-3); x <= 3; x++ {
@@ -134,7 +134,7 @@ func (u *Unit) Update(state *State) {
 				if !found {
 					break
 				}
-				if pos != *m.Checkpoint() {
+				if pos != *m.Checkpoint() && pos != state.SpawnPoint {
 					count := 0
 					for i := range state.Mans {
 						if pos == *state.Mans[i].UnitData.(Man).Checkpoint() {
