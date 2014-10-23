@@ -15,6 +15,7 @@ import (
 	"image/draw"
 	"image/png"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -577,27 +578,15 @@ func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, sta
 }
 
 func Render(img *image.RGBA, me res.Man, state *State, err error) {
-	gc := draw2d.NewGraphicContext(img)
+	hx, hy := (img.Rect.Min.X+img.Rect.Max.X)/2, (img.Rect.Min.Y+img.Rect.Max.Y)/2
 
 	draw.Draw(img, img.Rect, image.White, image.ZP, draw.Src)
 
 	if state.world == nil || state.Mans[0].UnitData == nil {
-		gc.SetFillColor(color.White)
-		gc.SetStrokeColor(color.Black)
-		gc.SetLineWidth(2)
-		const text = "Connecting..."
-		left, top, right, bottom := gc.GetStringBounds(text)
-		x := float64(img.Rect.Min.X+img.Rect.Dx()/2) + left/2 - right/2
-		y := float64(img.Rect.Min.Y+img.Rect.Dy()/2) + top/2 - bottom/2
-		gc.StrokeStringAt(text, x, y)
-		gc.FillStringAt(text, x, y)
+		RenderText(img, "Connecting...", image.Pt(hx, hy), color.White, color.Black, true)
 
 		if err != nil {
-			str := err.Error()
-			left, _, _, bottom = gc.GetStringBounds(str)
-			x, y = float64(img.Rect.Min.X)-left+2, float64(img.Rect.Max.Y)-bottom-2
-			gc.StrokeStringAt(str, x, y)
-			gc.FillStringAt(str, x, y)
+			RenderText(img, "Last error: "+err.Error(), image.Pt(img.Rect.Min.X+2, img.Rect.Max.Y-2), color.White, color.Black, false)
 		}
 
 		return
@@ -607,52 +596,37 @@ func Render(img *image.RGBA, me res.Man, state *State, err error) {
 		for i := range state.Mans {
 			r := img.Rect
 			if i&1 == 0 {
-				r.Max.Y -= r.Dy() / 2
+				r.Max.Y = hy
 			} else {
-				r.Min.Y += r.Dy() / 2
+				r.Min.Y = hy
 			}
 			if i&2 == 0 {
-				r.Max.X -= r.Dx() / 2
+				r.Max.X = hx
 			} else {
-				r.Min.X += r.Dx() / 2
+				r.Min.X = hx
 			}
 			render(img.SubImage(r).(*image.RGBA), res.Man(i), state)
 		}
-		gc.SetLineWidth(1)
-		gc.SetStrokeColor(color.Black)
-		gc.MoveTo(float64(img.Rect.Min.X+img.Rect.Max.X)/2, float64(img.Rect.Min.Y))
-		gc.LineTo(float64(img.Rect.Min.X+img.Rect.Max.X)/2, float64(img.Rect.Max.Y))
-		gc.MoveTo(float64(img.Rect.Min.X), float64(img.Rect.Min.Y+img.Rect.Max.Y)/2)
-		gc.LineTo(float64(img.Rect.Max.X), float64(img.Rect.Min.Y+img.Rect.Max.Y)/2)
-		gc.Stroke()
+		draw.Draw(img, image.Rect(hx, img.Rect.Min.Y, hx+1, img.Rect.Max.Y), image.Black, image.ZP, draw.Src)
+		draw.Draw(img, image.Rect(img.Rect.Min.X, hy, img.Rect.Max.X, hy+1), image.Black, image.ZP, draw.Src)
 	} else {
 		render(img, me, state)
 	}
 
 	for i := range state.Mans {
 		m := state.Mans[i].UnitData.(Man)
-		x := 2.0
-		y := 12.0
+		x, y := 2, 12
 		if i&1 == 1 {
-			y = float64(img.Rect.Dy()) - 24
+			y = img.Rect.Dy() - 24
 		}
 		if i&2 == 2 {
-			x = float64(img.Rect.Dx()) - 112
+			x = img.Rect.Dx() - 112
 		}
-		gc.SetFillColor(color.White)
-		gc.SetStrokeColor(mancolors[i])
 		if state.Mans[i].Health > 0 {
-			gc.SetLineWidth(4)
-			gc.MoveTo(x, y-4)
-			gc.LineTo(x+float64(state.Mans[i].Health*110/ManHealth), y-4)
-			gc.Stroke()
+			draw.Draw(img, image.Rect(x, y-4, x+int(state.Mans[i].Health*110/ManHealth), y), manfills[i], image.ZP, draw.Src)
 		} else if m.Respawn() != 0 && m.Lives() > 0 {
-			gc.SetLineWidth(2)
-			respawn := fmt.Sprintf("Respawn in %s", time.Duration(m.Respawn()-state.Tick)*time.Second/TicksPerSecond)
-			gc.StrokeStringAt(respawn, x, y)
-			gc.FillStringAt(respawn, x, y)
+			RenderText(img, fmt.Sprintf("Respawn in %s", time.Duration(m.Respawn()-state.Tick)*time.Second/TicksPerSecond), image.Pt(x, y), color.White, mancolors[i], false)
 		}
-		gc.SetLineWidth(2)
 		var lives string
 		if l := m.Lives(); l > 1 {
 			lives = fmt.Sprintf("%d Mans", l)
@@ -661,14 +635,12 @@ func Render(img *image.RGBA, me res.Man, state *State, err error) {
 		} else {
 			lives = "No Mans!!"
 		}
-		gc.StrokeStringAt(lives, x, y+14)
-		gc.FillStringAt(lives, x, y+14)
+		RenderText(img, lives, image.Pt(x, y+14), color.White, mancolors[i], false)
 	}
 }
+
 func render(img *image.RGBA, me res.Man, state *State) {
 	img.Rect = img.Rect.Sub(img.Rect.Min)
-
-	gc := draw2d.NewGraphicContext(img)
 
 	offX := int64(img.Rect.Dx()/2) - state.Mans[me].Position.X/PixelSize
 	offY := int64(img.Rect.Dy()/2) - state.Mans[me].Position.Y/PixelSize
@@ -730,6 +702,7 @@ func render(img *image.RGBA, me res.Man, state *State) {
 				switch mm := m.(type) {
 				case *WhipMan:
 					if mm.WhipStop != 0 && !mm.WhipEnd.Zero() {
+						gc := draw2d.NewGraphicContext(img)
 						gc.SetStrokeColor(color.Black)
 						gc.SetLineWidth(0.5)
 						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
@@ -737,6 +710,7 @@ func render(img *image.RGBA, me res.Man, state *State) {
 						gc.Stroke()
 					}
 					if mm.WhipStop == 0 && !mm.WhipTether.Zero() {
+						gc := draw2d.NewGraphicContext(img)
 						gc.SetStrokeColor(color.Black)
 						gc.SetLineWidth(0.5)
 						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
@@ -749,12 +723,7 @@ func render(img *image.RGBA, me res.Man, state *State) {
 	}
 
 	for _, f := range state.Floaters {
-		t := state.Tick - f.T
-		fg, bg := f.Fg, f.Bg
-		gc.SetLineWidth(2)
-		left, top, right, bottom := gc.GetStringBounds(f.S)
-		x := float64(f.X/PixelSize+offX) + left/2 - right/2
-		y := float64(f.Y/PixelSize+offY) + top/2 - bottom/2 - float64(t)
+		t, fg, bg := state.Tick-f.T, f.Fg, f.Bg
 		if t > FloaterFadeStart {
 			fg.R -= uint8(uint64(fg.R) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
 			fg.G -= uint8(uint64(fg.G) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
@@ -765,13 +734,75 @@ func render(img *image.RGBA, me res.Man, state *State) {
 			bg.B -= uint8(uint64(bg.B) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
 			bg.A -= uint8(uint64(bg.A) * (t - FloaterFadeStart) / (FloaterFadeEnd - FloaterFadeStart))
 		}
-		gc.SetFillColor(fg)
-		gc.SetStrokeColor(bg)
-		gc.StrokeStringAt(f.S, x, y)
-		gc.FillStringAt(f.S, x, y)
+		RenderText(img, f.S, image.Pt(int(f.X/PixelSize+offX), int(f.Y/PixelSize+offY)), fg, bg, true)
 	}
 
 	if state.Mans[me].UnitData.(Man).Respawn() != 0 {
 		draw.Draw(img, img.Rect, deadhaze, image.ZP, draw.Over)
 	}
+}
+
+type cachedText struct {
+	Fg, Bg   *image.Alpha
+	LastUsed time.Time
+}
+
+var (
+	textCache   = make(map[string]*cachedText)
+	textContext = draw2d.NewGraphicContext(image.NewRGBA(image.Rect(0, 0, 1, 1)))
+	textLock    sync.Mutex
+)
+
+func init() {
+	go func() {
+		for {
+			time.Sleep(time.Minute)
+
+			textLock.Lock()
+			for text, cache := range textCache {
+				if time.Since(cache.LastUsed) > time.Minute {
+					delete(textCache, text)
+				}
+			}
+			textLock.Unlock()
+		}
+	}()
+}
+
+func RenderText(dst *image.RGBA, text string, p image.Point, fg, bg color.Color, centered bool) {
+	textLock.Lock()
+	defer textLock.Unlock()
+
+	cache, ok := textCache[text]
+	if !ok {
+		cache = new(cachedText)
+		textCache[text] = cache
+
+		left, top, right, bottom := textContext.GetStringBounds(text)
+		canvas := image.NewRGBA(image.Rect(int(left)-3, int(top)-3, int(right)+3, int(bottom)+3))
+		cache.Fg, cache.Bg = image.NewAlpha(canvas.Rect), image.NewAlpha(canvas.Rect)
+
+		min := canvas.Rect.Min
+		canvas.Rect = canvas.Rect.Sub(min)
+
+		gc := draw2d.NewGraphicContext(canvas)
+		gc.SetLineWidth(2)
+
+		gc.StrokeStringAt(text, float64(-min.X), float64(-min.Y))
+		draw.Draw(cache.Bg, cache.Bg.Rect, canvas, image.ZP, draw.Src)
+
+		draw.Draw(canvas, canvas.Rect, image.Transparent, image.ZP, draw.Src)
+
+		gc.FillStringAt(text, float64(-min.X), float64(-min.Y))
+		draw.Draw(cache.Fg, cache.Fg.Rect, canvas, image.ZP, draw.Src)
+	}
+
+	if centered {
+		p.X -= (cache.Fg.Rect.Min.X + cache.Fg.Rect.Max.X) / 2
+		p.Y -= (cache.Fg.Rect.Min.Y + cache.Fg.Rect.Max.Y) / 2
+	}
+
+	cache.LastUsed = time.Now()
+	draw.DrawMask(dst, cache.Bg.Rect.Add(p), image.NewUniform(bg), image.ZP, cache.Bg, cache.Bg.Rect.Min, draw.Over)
+	draw.DrawMask(dst, cache.Fg.Rect.Add(p), image.NewUniform(fg), image.ZP, cache.Fg, cache.Fg.Rect.Min, draw.Over)
 }
