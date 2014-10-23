@@ -134,7 +134,7 @@ func (u *Unit) Update(state *State) {
 				if !found {
 					break
 				}
-				if pos == *m.Checkpoint() {
+				if pos != *m.Checkpoint() {
 					count := 0
 					for i := range state.Mans {
 						if pos == *state.Mans[i].UnitData.(Man).Checkpoint() {
