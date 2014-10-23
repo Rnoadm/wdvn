@@ -203,26 +203,30 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 	}
 	state.Mans[res.Man_Whip].UnitData = &WhipMan{
 		ManUnitData: ManUnitData{
-			Man_:   res.Man_Whip,
-			Lives_: ManLives,
+			Man_:        res.Man_Whip,
+			Lives_:      ManLives,
+			Checkpoint_: state.SpawnPoint,
 		},
 	}
 	state.Mans[res.Man_Density].UnitData = &DensityMan{
 		ManUnitData: ManUnitData{
-			Man_:   res.Man_Density,
-			Lives_: ManLives,
+			Man_:        res.Man_Density,
+			Lives_:      ManLives,
+			Checkpoint_: state.SpawnPoint,
 		},
 	}
 	state.Mans[res.Man_Vacuum].UnitData = &VacuumMan{
 		ManUnitData: ManUnitData{
-			Man_:   res.Man_Vacuum,
-			Lives_: ManLives,
+			Man_:        res.Man_Vacuum,
+			Lives_:      ManLives,
+			Checkpoint_: state.SpawnPoint,
 		},
 	}
 	state.Mans[res.Man_Normal].UnitData = &NormalMan{
 		ManUnitData: ManUnitData{
-			Man_:   res.Man_Normal,
-			Lives_: ManLives,
+			Man_:        res.Man_Normal,
+			Lives_:      ManLives,
+			Checkpoint_: state.SpawnPoint,
 		},
 	}
 	state.Units = make(map[uint64]*Unit)

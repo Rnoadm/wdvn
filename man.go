@@ -15,6 +15,7 @@ type Man interface {
 	Respawn() uint64
 	Target() Coord
 	Input(*res.Packet)
+	Checkpoint() *Coord
 }
 
 func init() {
@@ -26,12 +27,13 @@ func init() {
 }
 
 type ManUnitData struct {
-	Man_       res.Man
-	Target_    Coord
-	Crouching_ bool
-	Input_     *res.Packet
-	Respawn_   uint64
-	Lives_     uint64
+	Man_        res.Man
+	Target_     Coord
+	Crouching_  bool
+	Input_      *res.Packet
+	Respawn_    uint64
+	Lives_      uint64
+	Checkpoint_ Coord
 }
 
 func (m *ManUnitData) UpdateDead(state *State, u *Unit) {
@@ -137,6 +139,9 @@ func (m *ManUnitData) Input(p *res.Packet) {
 }
 func (m *ManUnitData) Lives() uint64 {
 	return m.Lives_
+}
+func (m *ManUnitData) Checkpoint() *Coord {
+	return &m.Checkpoint_
 }
 
 type WhipMan struct {

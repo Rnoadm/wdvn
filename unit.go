@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Rnoadm/wdvn/res"
 	"github.com/dustin/go-humanize"
 	"image"
 	"image/color"
@@ -115,19 +116,44 @@ func (u *Unit) Update(state *State) {
 		case SpecialTile_Bounce:
 			u.Velocity.Y = -100 * Gravity
 		case SpecialTile_Checkpoint:
-			if _, ok := u.UnitData.(Man); ok {
-				pos := u.Position
-				pos.Y -= TileSize * PixelSize
-				if pos.Sub(state.SpawnPoint).LengthSquared() > 3*TileSize*PixelSize*3*TileSize*PixelSize {
+			if m, ok := u.UnitData.(Man); ok {
+				pos := u.Position.Floor(TileSize * PixelSize)
+				found := false
+				for x := int64(-3); x <= 3; x++ {
+					for y := int64(-3); y <= 3; y++ {
+						if state.world.Special(pos.X/TileSize/PixelSize+x, pos.Y/TileSize/PixelSize+y) == SpecialTile_Checkpoint {
+							pos = pos.Add(Coord{x*TileSize*PixelSize + TileSize*PixelSize/2, y*TileSize*PixelSize - TileSize*PixelSize})
+							found = true
+							break
+						}
+					}
+					if found {
+						break
+					}
+				}
+				if !found {
+					break
+				}
+				if pos == *m.Checkpoint() {
+					count := 0
+					for i := range state.Mans {
+						if pos == *state.Mans[i].UnitData.(Man).Checkpoint() {
+							count++
+						}
+					}
+					text := [res.Man_count]string{"CHECKPOINT 25%", "CHECKPOINT 50%", "CHECKPOINT 75%", "CHECKPOINT UNLOCKED"}[count]
+					*m.Checkpoint() = pos
 					state.Floaters = append(state.Floaters, Floater{
-						S:  "CHECKPOINT",
+						S:  text,
 						Fg: color.RGBA{255, 255, 255, 255},
 						Bg: u.Color(),
 						X:  pos.X,
 						Y:  pos.Y,
 						T:  state.Tick,
 					})
-					state.SpawnPoint = pos
+					if count == int(res.Man_count-1) {
+						state.SpawnPoint = pos
+					}
 				}
 			}
 		}
