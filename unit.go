@@ -114,6 +114,22 @@ func (u *Unit) Update(state *State) {
 		switch special {
 		case SpecialTile_Bounce:
 			u.Velocity.Y = -100 * Gravity
+		case SpecialTile_Checkpoint:
+			if _, ok := u.UnitData.(Man); ok {
+				pos := u.Position
+				pos.Y -= TileSize * PixelSize
+				if pos.Sub(state.SpawnPoint).LengthSquared() > 3*TileSize*PixelSize*3*TileSize*PixelSize {
+					state.Floaters = append(state.Floaters, Floater{
+						S:  "CHECKPOINT",
+						Fg: color.RGBA{255, 255, 255, 255},
+						Bg: u.Color(),
+						X:  pos.X,
+						Y:  pos.Y,
+						T:  state.Tick,
+					})
+					state.SpawnPoint = pos
+				}
+			}
 		}
 	}
 
@@ -170,6 +186,8 @@ func (u *Unit) Update(state *State) {
 			case SideBottom:
 				u.Velocity.Y = 100 * Gravity
 			}
+		case SpecialTile_Checkpoint:
+			// do nothing
 		default:
 			panic("unimplemented special tile type: " + specialTile_names[tr.Special])
 		}

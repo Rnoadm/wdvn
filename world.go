@@ -13,12 +13,14 @@ type SpecialTile int
 const (
 	SpecialTile_None = iota
 	SpecialTile_Bounce
+	SpecialTile_Checkpoint
 	SpecialTile_count
 )
 
 var specialTile_names [SpecialTile_count]string = [...]string{
-	SpecialTile_None:   "none",
-	SpecialTile_Bounce: "bounce",
+	SpecialTile_None:       "none",
+	SpecialTile_Bounce:     "bounce",
+	SpecialTile_Checkpoint: "checkpoint",
 }
 
 type WorldTile struct {
