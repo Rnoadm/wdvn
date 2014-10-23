@@ -188,49 +188,13 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <
 
 func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan bool, broadcast chan<- *res.Packet, world *World) {
 	var (
-		state            State
+		state            = NewState(world)
 		input            [res.Man_count]res.Packet
 		connection_count int
 		prev             []byte
 		tick             = time.Tick(time.Second / TicksPerSecond)
 		ch               = make(chan []byte)
 	)
-	state.world = world
-	for i := range state.Mans {
-		state.Mans[i].Position = state.FindSpawnPosition(ManSize)
-		state.Mans[i].Size = ManSize
-		state.Mans[i].Health = ManHealth
-	}
-	state.Mans[res.Man_Whip].UnitData = &WhipMan{
-		ManUnitData: ManUnitData{
-			Man_:        res.Man_Whip,
-			Lives_:      ManLives,
-			Checkpoint_: state.SpawnPoint,
-		},
-	}
-	state.Mans[res.Man_Density].UnitData = &DensityMan{
-		ManUnitData: ManUnitData{
-			Man_:        res.Man_Density,
-			Lives_:      ManLives,
-			Checkpoint_: state.SpawnPoint,
-		},
-	}
-	state.Mans[res.Man_Vacuum].UnitData = &VacuumMan{
-		ManUnitData: ManUnitData{
-			Man_:        res.Man_Vacuum,
-			Lives_:      ManLives,
-			Checkpoint_: state.SpawnPoint,
-		},
-	}
-	state.Mans[res.Man_Normal].UnitData = &NormalMan{
-		ManUnitData: ManUnitData{
-			Man_:        res.Man_Normal,
-			Lives_:      ManLives,
-			Checkpoint_: state.SpawnPoint,
-		},
-	}
-	state.Units = make(map[uint64]*Unit)
-
 	for {
 		if connection_count == 0 {
 			if b := <-connection; b {

@@ -556,11 +556,17 @@ func init() {
 }
 
 func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, state <-chan State, err <-chan error) {
+	img := image.NewRGBA(w.Screen().Bounds())
 	var m res.Man
 	var s State
 	var e error
 	for {
-		Render(w, m, &s, e)
+		if img.Rect != w.Screen().Bounds() {
+			img = image.NewRGBA(w.Screen().Bounds())
+		}
+		Render(img, m, &s, e)
+		w.Screen().CopyRGBA(img, img.Rect)
+		w.FlushImage(img.Rect)
 		select {
 		case m = <-man:
 		case s = <-state:
@@ -570,8 +576,7 @@ func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, sta
 	}
 }
 
-func Render(w wde.Window, me res.Man, state *State, err error) {
-	img := image.NewRGBA(w.Screen().Bounds())
+func Render(img *image.RGBA, me res.Man, state *State, err error) {
 	gc := draw2d.NewGraphicContext(img)
 
 	draw.Draw(img, img.Rect, image.White, image.ZP, draw.Src)
@@ -595,8 +600,6 @@ func Render(w wde.Window, me res.Man, state *State, err error) {
 			gc.FillStringAt(str, x, y)
 		}
 
-		w.Screen().CopyRGBA(img, img.Rect)
-		w.FlushImage(img.Rect)
 		return
 	}
 
@@ -661,9 +664,6 @@ func Render(w wde.Window, me res.Man, state *State, err error) {
 		gc.StrokeStringAt(lives, x, y+14)
 		gc.FillStringAt(lives, x, y+14)
 	}
-
-	w.Screen().CopyRGBA(img, img.Rect)
-	w.FlushImage(img.Rect)
 }
 func render(img *image.RGBA, me res.Man, state *State) {
 	img.Rect = img.Rect.Sub(img.Rect.Min)
