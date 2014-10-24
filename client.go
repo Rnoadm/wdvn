@@ -385,28 +385,15 @@ var (
 
 func graphicsInit() {
 	graphicsOnce.Do(func() {
-		const FontName = "luxi"
-		const FontStyleBoldItalic = draw2d.FontStyleBold | draw2d.FontStyleItalic
-		for d, b := range map[draw2d.FontData][]byte{
-			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleBold}:    res.LuximbTtf,
-			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilyMono, Style: FontStyleBoldItalic}:     res.LuximbiTtf,
-			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleNormal}:  res.LuximrTtf,
-			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleItalic}:  res.LuximriTtf,
-			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySerif, Style: draw2d.FontStyleBold}:   res.LuxirbTtf,
-			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySerif, Style: FontStyleBoldItalic}:    res.LuxirbiTtf,
-			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySerif, Style: draw2d.FontStyleNormal}: res.LuxirrTtf,
-			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySerif, Style: draw2d.FontStyleItalic}: res.LuxirriTtf,
-			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySans, Style: draw2d.FontStyleBold}:    res.LuxisbTtf,
-			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySans, Style: FontStyleBoldItalic}:     res.LuxisbiTtf,
-			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySans, Style: draw2d.FontStyleNormal}:  res.LuxisrTtf,
-			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySans, Style: draw2d.FontStyleItalic}:  res.LuxisriTtf,
-		} {
-			font, err := truetype.Parse(b)
-			if err != nil {
-				panic(err)
-			}
-			draw2d.RegisterFont(d, font)
+		font, err := truetype.Parse(res.LuxisrTtf)
+		if err != nil {
+			panic(err)
 		}
+		draw2d.RegisterFont(draw2d.FontData{
+			Name:   "luxi",
+			Family: draw2d.FontFamilySans,
+			Style:  draw2d.FontStyleNormal,
+		}, font)
 
 		src, err := png.Decode(bytes.NewReader(res.MansPng))
 		if err != nil {
