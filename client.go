@@ -56,9 +56,10 @@ func ClientNet(addr string, read chan<- *res.Packet, write <-chan *res.Packet, e
 }
 
 func Client(addr string) {
+	defer close(quit)
 	defer wde.Stop()
 
-	w, err := wde.NewWindow(800, 300)
+	w, err := wde.NewWindow(*flagWidth, *flagHeight)
 	if err != nil {
 		panic(err)
 	}

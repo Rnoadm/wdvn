@@ -12,9 +12,10 @@ import (
 )
 
 func Editor(filename string) {
+	defer close(quit)
 	defer wde.Stop()
 
-	w, err := wde.NewWindow(800, 300)
+	w, err := wde.NewWindow(*flagWidth, *flagHeight)
 	if err != nil {
 		panic(err)
 	}

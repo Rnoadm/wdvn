@@ -195,6 +195,29 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 		tick             = time.Tick(time.Second / TicksPerSecond)
 		ch               = make(chan []byte)
 	)
+
+	if replay != nil {
+		{
+			var buf bytes.Buffer
+			err := gob.NewEncoder(&buf).Encode(world)
+			if err != nil {
+				panic(err)
+			}
+
+			replay <- buf.Bytes()
+		}
+
+		{
+			var buf bytes.Buffer
+			err := gob.NewEncoder(&buf).Encode(state)
+			if err != nil {
+				panic(err)
+			}
+
+			replay <- buf.Bytes()
+		}
+	}
+
 	for {
 		if connection_count == 0 {
 			if b := <-connection; b {
@@ -213,7 +236,7 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 
 		case out <- ch:
 			var buf bytes.Buffer
-			err := gob.NewEncoder(&buf).Encode(&state)
+			err := gob.NewEncoder(&buf).Encode(state)
 			if err != nil {
 				panic(err)
 			}
@@ -225,11 +248,14 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 			state.Update(&input)
 
 			var buf bytes.Buffer
-			err := gob.NewEncoder(&buf).Encode(&state)
+			err := gob.NewEncoder(&buf).Encode(state)
 			if err != nil {
 				panic(err)
 			}
 			diff := bindiff.Diff(prev, buf.Bytes(), 5)
+			if replay != nil {
+				replay <- diff
+			}
 			prev = buf.Bytes()
 
 			go Send(broadcast, &res.Packet{
