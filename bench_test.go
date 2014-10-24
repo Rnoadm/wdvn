@@ -50,6 +50,10 @@ func makeState() *State {
 	return state
 }
 
+func init() {
+	clientInit()
+}
+
 func BenchmarkRender480p(b *testing.B) {
 	img := image.NewRGBA(image.Rect(0, 0, 720, 480))
 	state := makeState()

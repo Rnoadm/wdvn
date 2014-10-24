@@ -56,6 +56,8 @@ func ClientNet(addr string, read chan<- *res.Packet, write <-chan *res.Packet, e
 }
 
 func Client(addr string) {
+	clientInit()
+
 	defer close(quit)
 	defer wde.Stop()
 
@@ -387,7 +389,7 @@ var (
 	lemonsprite   *image.RGBA
 )
 
-func init() {
+func clientInit() {
 	const FontStyleBoldItalic = draw2d.FontStyleBold | draw2d.FontStyleItalic
 	for d, b := range map[draw2d.FontData][]byte{
 		draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleBold}:    res.LuximbTtf,

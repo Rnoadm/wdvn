@@ -52,6 +52,8 @@ func EncodeAll(w *bufio.Writer, frames <-chan *image.YCbCr) error {
 }
 
 func EncodeVideo(w io.Writer, r io.Reader) error {
+	clientInit()
+
 	frames := make(chan *image.YCbCr)
 	br := bufio.NewReader(r)
 	go func() {

@@ -12,6 +12,8 @@ import (
 )
 
 func Editor(filename string) {
+	clientInit()
+
 	defer close(quit)
 	defer wde.Stop()
 
