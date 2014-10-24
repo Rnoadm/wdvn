@@ -62,12 +62,12 @@ func Client(addr string) {
 		state     State
 		lastState []byte
 		lastTick  uint64
-		input     [res.Man_count]res.Packet
-		inputch   = make(chan *res.Packet, 1)
+		input     = make(chan *res.Packet, 1)
 		noState   = true
 		world     *World
+		mouse     image.Point
 	)
-	defer close(inputch)
+	defer close(input)
 	releaseAll := &res.Packet{
 		Mouse1:   Button_released,
 		Mouse2:   Button_released,
@@ -76,9 +76,8 @@ func Client(addr string) {
 		KeyLeft:  Button_released,
 		KeyRight: Button_released,
 	}
-
 	sendInput := func(p *res.Packet) {
-		inputch <- p
+		input <- p
 	}
 	go func() {
 		var p *res.Packet
@@ -90,7 +89,7 @@ func Client(addr string) {
 			}
 
 			select {
-			case v, ok := <-inputch:
+			case v, ok := <-input:
 				if !ok {
 					return
 				}
@@ -111,6 +110,39 @@ func Client(addr string) {
 			}
 		}
 	}()
+
+	sendMouse := func() {
+		width, height := w.Size()
+		if *flagSplitScreen {
+			width /= 2
+			height /= 2
+
+			var them res.Man
+			if mouse.Y >= height {
+				them |= 1
+			}
+			if mouse.X >= width {
+				them |= 2
+			}
+
+			if me&1 == 1 {
+				mouse.Y -= height
+			}
+			if me&2 == 2 {
+				mouse.X -= width
+			}
+
+			delta := state.Mans[them].Position.Sub(state.Mans[me].Position)
+			mouse.X += int(delta.X / PixelSize)
+			mouse.Y += int(delta.Y / PixelSize)
+		}
+		mouse.X -= width / 2
+		mouse.Y -= height / 2
+		sendInput(&res.Packet{
+			X: proto.Int64(int64(mouse.X)),
+			Y: proto.Int64(int64(mouse.Y)),
+		})
+	}
 
 	renderResize, renderMan, renderState, renderError := make(chan struct{}, 1), make(chan res.Man, 1), make(chan State, 1), make(chan error, 1)
 	go RenderThread(w, renderResize, renderMan, renderState, renderError)
@@ -153,9 +185,6 @@ func Client(addr string) {
 					}
 					break
 				}
-
-			case res.Type_Input:
-				proto.Merge(&input[p.GetMan()], p)
 
 			case res.Type_StateDiff:
 				if !noState {
@@ -297,6 +326,8 @@ func Client(addr string) {
 					})
 				}
 			case wde.MouseDownEvent:
+				mouse = e.Where
+				sendMouse()
 				switch e.Which {
 				case wde.LeftButton:
 					sendInput(&res.Packet{
@@ -308,6 +339,8 @@ func Client(addr string) {
 					})
 				}
 			case wde.MouseUpEvent:
+				mouse = e.Where
+				sendMouse()
 				switch e.Which {
 				case wde.LeftButton:
 					sendInput(&res.Packet{
@@ -323,37 +356,11 @@ func Client(addr string) {
 			case wde.MouseExitedEvent:
 				sendInput(nil)
 			case wde.MouseMovedEvent:
-				width, height := w.Size()
-				if *flagSplitScreen {
-					width /= 2
-					height /= 2
-					if me&1 == 1 {
-						e.Where.Y -= height
-					}
-					if me&2 == 2 {
-						e.Where.X -= width
-					}
-				}
-				sendInput(&res.Packet{
-					X: proto.Int64(int64(e.Where.X - width/2)),
-					Y: proto.Int64(int64(e.Where.Y - height/2)),
-				})
+				mouse = e.Where
+				sendMouse()
 			case wde.MouseDraggedEvent:
-				width, height := w.Size()
-				if *flagSplitScreen {
-					width /= 2
-					height /= 2
-					if me&1 == 1 {
-						e.Where.Y -= height
-					}
-					if me&2 == 2 {
-						e.Where.X -= width
-					}
-				}
-				sendInput(&res.Packet{
-					X: proto.Int64(int64(e.Where.X - width/2)),
-					Y: proto.Int64(int64(e.Where.Y - height/2)),
-				})
+				mouse = e.Where
+				sendMouse()
 			default:
 				panic(fmt.Errorf("unexpected event type %T in %#v", event, event))
 			}
