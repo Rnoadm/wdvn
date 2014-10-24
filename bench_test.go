@@ -51,7 +51,7 @@ func makeState() *State {
 }
 
 func init() {
-	clientInit()
+	clientInitOnce.Do(clientInit)
 }
 
 func BenchmarkRender480p(b *testing.B) {

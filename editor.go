@@ -12,7 +12,7 @@ import (
 )
 
 func Editor(filename string) {
-	clientInit()
+	graphicsInit()
 
 	defer close(quit)
 	defer wde.Stop()

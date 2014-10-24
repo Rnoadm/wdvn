@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"net"
 	"sort"
+	"time"
 )
 
 const (
@@ -368,6 +369,61 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 		sort.Sort(tr)
 	}
 	return tr
+}
+
+// Reconnect automatically reconnects to the given host and provides a single bidirectional stream of packets.
+//
+// addr - the remote host.
+// read - packets received from the remote host. closed when done.
+// write - packets to send to the remote host. close this to exit.
+// errors - net errors encountered. closed when done.
+func Reconnect(addr string, read chan<- *res.Packet, write <-chan *res.Packet, errors chan<- error) {
+	backOff := time.Second
+
+	for {
+		if func() bool {
+			conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+			if err != nil {
+				errors <- err
+				time.Sleep(backOff)
+				backOff *= 2
+				return false
+			} else {
+				backOff = time.Second
+			}
+			defer conn.Close()
+
+			readch, writech, errorsch := make(chan *res.Packet), make(chan *res.Packet), make(chan error, 2)
+			defer close(writech)
+			go Read(conn, readch, errorsch)
+			go Write(conn, writech, errorsch)
+
+			for {
+				select {
+				case p, ok := <-write:
+					if !ok {
+						return true
+					}
+					writech <- p
+
+				case p, ok := <-readch:
+					if !ok {
+						readch = nil
+						continue
+					}
+					read <- p
+
+				case err := <-errorsch:
+					errors <- err
+					return false
+				}
+			}
+		}() {
+			close(read)
+			close(errors)
+			return
+		}
+	}
 }
 
 func makeSlice(l uint64) (b []byte, err error) {
