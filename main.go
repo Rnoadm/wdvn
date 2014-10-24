@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"flag"
+	"fmt"
 	"github.com/skelterjohn/go.wde"
 	_ "github.com/skelterjohn/go.wde/init"
 	"io"
@@ -24,21 +25,24 @@ func init() {
 }
 
 var (
-	flagHost    = flag.String("host", "", "host this game, like \":7777\"")
-	flagAddress = flag.String("addr", "", "address to connect to, like \"192.168.1.100:7777\"")
+	groupConnection = flag.NewFlagSet("Connection", flag.ExitOnError)
+	flagHost        = groupConnection.String("host", "", "host this game, like \":7777\"")
+	flagAddress     = groupConnection.String("addr", "", "address to connect to, like \""+externalIP()+":7777\"")
 
-	flagLevel  = flag.String("level", "", "filename of level to play")
-	flagEditor = flag.String("edit", "", "filename of level to edit")
+	groupLevel = flag.NewFlagSet("Level", flag.ExitOnError)
+	flagLevel  = groupLevel.String("level", "", "filename of level to play")
+	flagEditor = groupLevel.String("edit", "", "filename of level to edit")
 
-	flagWidth  = flag.Int("w", 800, "width")
-	flagHeight = flag.Int("h", 300, "height")
+	groupRendering  = flag.NewFlagSet("Rendering", flag.ExitOnError)
+	flagWidth       = groupRendering.Int("w", 800, "width")
+	flagHeight      = groupRendering.Int("h", 300, "height")
+	flagSplitScreen = groupRendering.Bool("ss", false, "split screen")
 
-	flagSplitScreen = flag.Bool("ss", false, "render split screen")
-	flagRecord      = flag.String("record", "", "record a replay to this file")
-	flagPlayback    = flag.String("replay", "", "play a replay from this file as YUV4MPEG2 on stdout")
-
-	flagProfile    = flag.String("prof", "", "start a pprof server for developer use")
-	flagCPUProfile = flag.Bool("cpuprofile", false, "profile to a file instead of starting a server")
+	groupDeveloper = flag.NewFlagSet("Developer", flag.ExitOnError)
+	flagRecord     = groupDeveloper.String("record", "", "record a replay to this file")
+	flagPlayback   = groupDeveloper.String("replay", "", "play a replay from this file as YUV4MPEG2 on stdout")
+	flagProfile    = groupDeveloper.String("prof", "", "start a pprof server for developer use")
+	flagCPUProfile = groupDeveloper.Bool("cpuprofile", false, "profile to a file instead of starting a server")
 )
 
 var (
@@ -47,6 +51,22 @@ var (
 )
 
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+
+		fmt.Fprintf(os.Stderr, "\nConnection:\n")
+		groupConnection.PrintDefaults()
+
+		fmt.Fprintf(os.Stderr, "\nRendering:\n")
+		groupRendering.PrintDefaults()
+
+		fmt.Fprintf(os.Stderr, "\nLevel:\n")
+		groupLevel.PrintDefaults()
+
+		fmt.Fprintf(os.Stderr, "\nDeveloper:\n")
+		groupDeveloper.PrintDefaults()
+	}
+
 	flag.Parse()
 
 	if *flagProfile != "" {
@@ -174,10 +194,7 @@ func main() {
 	}
 
 	if *flagHost == "" && *flagAddress == "" {
-		addr, err := externalIP()
-		if err != nil {
-			panic(err)
-		}
+		addr := externalIP()
 
 		l, err := net.Listen("tcp", addr+":0")
 		if err != nil {
@@ -209,10 +226,10 @@ func main() {
 }
 
 // from http://stackoverflow.com/a/23558495/2664560
-func externalIP() (string, error) {
+func externalIP() string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return "", err
+		return "127.0.0.1"
 	}
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 {
@@ -223,7 +240,7 @@ func externalIP() (string, error) {
 		}
 		addrs, err := iface.Addrs()
 		if err != nil {
-			return "", err
+			continue
 		}
 		for _, addr := range addrs {
 			var ip net.IP
@@ -236,9 +253,9 @@ func externalIP() (string, error) {
 			if ip == nil || ip.IsLoopback() {
 				continue
 			}
-			return ip.String(), nil
+			return ip.String()
 		}
 	}
 	// last resort: ipv4 loopback
-	return "127.0.0.1", nil
+	return "127.0.0.1"
 }
