@@ -245,10 +245,15 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 
 	for {
 		if connection_count == 0 {
-			if b := <-connection; b {
-				connection_count++
-			} else {
-				panic("connection count underflow")
+			select {
+			case b := <-connection:
+				if b {
+					connection_count++
+				} else {
+					panic("connection count underflow")
+				}
+			case <-quitRequest:
+				return
 			}
 		}
 
