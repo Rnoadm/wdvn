@@ -123,6 +123,8 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <
 		atomic.AddUint64(&(*connected)[man], ^uint64(0))
 	}()
 
+	inputCache := new(res.Packet)
+
 	log.Println(conn.RemoteAddr(), "connected for", man)
 
 	// tell the client which man they are
@@ -177,14 +179,24 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <
 				if atomic.CompareAndSwapUint64(&(*connected)[p.GetMan()], 0, 1) {
 					log.Println(conn.RemoteAddr(), "switched from", man, "to", p.GetMan())
 
+					release, press := &res.Packet{Type: Type_Input}, &res.Packet{Type: Type_Input}
+					proto.Merge(release, ReleaseAll)
+					proto.Merge(press, inputCache)
+					release.Man, press.Man = pman, p.Man
+
+					go Send(input, release)
+					go Send(input, press)
+
 					atomic.AddUint64(&(*connected)[man], ^uint64(0))
 					man, pman = p.GetMan(), p.Man
+
 					go Send(write, p)
 				}
 
 			case res.Type_Input:
 				p.Man = pman
 				go Send(input, p)
+				proto.Merge(inputCache, p)
 
 			case res.Type_FullState:
 				log.Println(conn.RemoteAddr(), "requested full state update")

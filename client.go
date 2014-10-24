@@ -68,17 +68,6 @@ func Client(addr string) {
 		mouse     image.Point
 	)
 	defer close(input)
-	releaseAll := &res.Packet{
-		Mouse1:   Button_released,
-		Mouse2:   Button_released,
-		KeyUp:    Button_released,
-		KeyDown:  Button_released,
-		KeyLeft:  Button_released,
-		KeyRight: Button_released,
-	}
-	sendInput := func(p *res.Packet) {
-		input <- p
-	}
 	go func() {
 		var p *res.Packet
 
@@ -100,7 +89,7 @@ func Client(addr string) {
 					}
 				}
 				if v == nil {
-					proto.Merge(p, releaseAll)
+					proto.Merge(p, ReleaseAll)
 				} else {
 					proto.Merge(p, v)
 				}
@@ -138,10 +127,11 @@ func Client(addr string) {
 		}
 		mouse.X -= width / 2
 		mouse.Y -= height / 2
-		sendInput(&res.Packet{
+		input <- &res.Packet{
 			X: proto.Int64(int64(mouse.X)),
 			Y: proto.Int64(int64(mouse.Y)),
-		})
+		}
+
 	}
 
 	renderResize, renderMan, renderState, renderError := make(chan struct{}, 1), make(chan res.Man, 1), make(chan State, 1), make(chan error, 1)
@@ -268,21 +258,25 @@ func Client(addr string) {
 			case wde.KeyDownEvent:
 				switch e.Key {
 				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow, wde.KeySpace:
-					sendInput(&res.Packet{
+					input <- &res.Packet{
 						KeyUp: Button_pressed,
-					})
+					}
+
 				case wde.KeyS, wde.KeyPadDown, wde.KeyDownArrow:
-					sendInput(&res.Packet{
+					input <- &res.Packet{
 						KeyDown: Button_pressed,
-					})
+					}
+
 				case wde.KeyA, wde.KeyPadLeft, wde.KeyLeftArrow:
-					sendInput(&res.Packet{
+					input <- &res.Packet{
 						KeyLeft: Button_pressed,
-					})
+					}
+
 				case wde.KeyD, wde.KeyPadRight, wde.KeyRightArrow:
-					sendInput(&res.Packet{
+					input <- &res.Packet{
 						KeyRight: Button_pressed,
-					})
+					}
+
 				case wde.KeyF1:
 					go Send(write, &res.Packet{
 						Type: Type_SelectMan,
@@ -309,52 +303,57 @@ func Client(addr string) {
 			case wde.KeyUpEvent:
 				switch e.Key {
 				case wde.KeyW, wde.KeyPadUp, wde.KeyUpArrow, wde.KeySpace:
-					sendInput(&res.Packet{
+					input <- &res.Packet{
 						KeyUp: Button_released,
-					})
+					}
+
 				case wde.KeyS, wde.KeyPadDown, wde.KeyDownArrow:
-					sendInput(&res.Packet{
+					input <- &res.Packet{
 						KeyDown: Button_released,
-					})
+					}
+
 				case wde.KeyA, wde.KeyPadLeft, wde.KeyLeftArrow:
-					sendInput(&res.Packet{
+					input <- &res.Packet{
 						KeyLeft: Button_released,
-					})
+					}
+
 				case wde.KeyD, wde.KeyPadRight, wde.KeyRightArrow:
-					sendInput(&res.Packet{
+					input <- &res.Packet{
 						KeyRight: Button_released,
-					})
+					}
 				}
 			case wde.MouseDownEvent:
 				mouse = e.Where
 				sendMouse()
 				switch e.Which {
 				case wde.LeftButton:
-					sendInput(&res.Packet{
+					input <- &res.Packet{
 						Mouse1: Button_pressed,
-					})
+					}
+
 				case wde.RightButton:
-					sendInput(&res.Packet{
+					input <- &res.Packet{
 						Mouse2: Button_pressed,
-					})
+					}
 				}
 			case wde.MouseUpEvent:
 				mouse = e.Where
 				sendMouse()
 				switch e.Which {
 				case wde.LeftButton:
-					sendInput(&res.Packet{
+					input <- &res.Packet{
 						Mouse1: Button_released,
-					})
+					}
+
 				case wde.RightButton:
-					sendInput(&res.Packet{
+					input <- &res.Packet{
 						Mouse2: Button_released,
-					})
+					}
 				}
 			case wde.MouseEnteredEvent:
 				// TODO
 			case wde.MouseExitedEvent:
-				sendInput(nil)
+				input <- nil
 			case wde.MouseMovedEvent:
 				mouse = e.Where
 				sendMouse()

@@ -70,6 +70,15 @@ var (
 
 	Button_released = res.Button_released.Enum()
 	Button_pressed  = res.Button_pressed.Enum()
+
+	ReleaseAll = &res.Packet{
+		Mouse1:   Button_released,
+		Mouse2:   Button_released,
+		KeyUp:    Button_released,
+		KeyDown:  Button_released,
+		KeyLeft:  Button_released,
+		KeyRight: Button_released,
+	}
 )
 
 type State struct {
