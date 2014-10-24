@@ -199,17 +199,15 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 	if replay != nil {
 		{
 			var buf bytes.Buffer
-			err := gob.NewEncoder(&buf).Encode(world)
+			err := buf.WriteByte(0)
 			if err != nil {
 				panic(err)
 			}
-
-			replay <- buf.Bytes()
-		}
-
-		{
-			var buf bytes.Buffer
-			err := gob.NewEncoder(&buf).Encode(state)
+			err = gob.NewEncoder(&buf).Encode(world)
+			if err != nil {
+				panic(err)
+			}
+			err = gob.NewEncoder(&buf).Encode(state)
 			if err != nil {
 				panic(err)
 			}
@@ -254,7 +252,7 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 			}
 			diff := bindiff.Diff(prev, buf.Bytes(), 5)
 			if replay != nil {
-				replay <- diff
+				replay <- append([]byte{1}, diff...)
 			}
 			prev = buf.Bytes()
 

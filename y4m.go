@@ -62,71 +62,25 @@ func EncodeVideo(w io.Writer, r io.Reader) error {
 		var (
 			world World
 			state State
+			buf   bytes.Buffer
+			old   []byte
 			src   = image.NewRGBA(image.Rect(0, 0, *flagWidth, *flagHeight))
 		)
 
-		l, err := binary.ReadUvarint(br)
+		version, err := binary.ReadUvarint(br)
 		if err != nil {
 			panic(err)
 		}
-
-		b := make([]byte, l)
-		_, err = io.ReadFull(br, b)
-		if err != nil {
-			panic(err)
+		switch version {
+		case 0:
+			panic("invalid replay version")
+		case 1:
+			// do nothing
+		default:
+			panic("replay from newer version")
 		}
-
-		err = gob.NewDecoder(bytes.NewReader(b)).Decode(&world)
-		if err != nil {
-			panic(err)
-		}
-
-		l, err = binary.ReadUvarint(br)
-		if err != nil {
-			panic(err)
-		}
-
-		b = make([]byte, l)
-		_, err = io.ReadFull(br, b)
-		if err != nil {
-			panic(err)
-		}
-
-		err = gob.NewDecoder(bytes.NewReader(b)).Decode(&state)
-		if err != nil {
-			panic(err)
-		}
-
-		var patch []byte
 
 		for {
-			state.world = &world
-			Render(src, res.Man_Whip, &state, nil)
-			dst := image.NewYCbCr(src.Rect, image.YCbCrSubsampleRatio444)
-			i0 := src.PixOffset(src.Rect.Min.X, src.Rect.Min.Y)
-			i1 := dst.YOffset(dst.Rect.Min.X, dst.Rect.Min.Y)
-			i2 := dst.COffset(dst.Rect.Min.X, dst.Rect.Min.Y)
-			for y := src.Rect.Min.Y; y < src.Rect.Max.Y; y++ {
-				i0x := i0
-				i1x := i1
-				i2x := i2
-				for x := src.Rect.Min.X; x < src.Rect.Max.X; x++ {
-					y, cb, cr := color.RGBToYCbCr(src.Pix[i0x], src.Pix[i0x+1], src.Pix[i0x+2])
-
-					dst.Y[i1x] = y
-					dst.Cb[i2x] = cb
-					dst.Cr[i2x] = cr
-
-					i0x += 4
-					i1x++
-					i2x++
-				}
-				i0 += src.Stride
-				i1 += dst.YStride
-				i2 += dst.CStride
-			}
-			frames <- dst
-
 			l, err := binary.ReadUvarint(br)
 			if err == io.EOF {
 				return
@@ -135,22 +89,54 @@ func EncodeVideo(w io.Writer, r io.Reader) error {
 				panic(err)
 			}
 
-			if uint64(cap(patch)) < l {
-				patch = make([]byte, l)
-			} else {
-				patch = patch[:l]
+			n, err := io.CopyN(&buf, br, int64(l))
+			if err == nil && n != int64(l) {
+				err = io.ErrUnexpectedEOF
 			}
-			_, err = io.ReadFull(br, patch)
 			if err != nil {
 				panic(err)
 			}
 
-			b, err = bindiff.Forward(b, patch)
-			state = State{}
-			err = gob.NewDecoder(bytes.NewReader(b)).Decode(&state)
+			t, err := buf.ReadByte()
 			if err != nil {
 				panic(err)
 			}
+
+			switch t {
+			case 0:
+				world, state = World{}, State{}
+				err = gob.NewDecoder(&buf).Decode(&world)
+				if err != nil {
+					panic(err)
+				}
+
+				old = make([]byte, buf.Len())
+				copy(old, buf.Bytes())
+
+				err = gob.NewDecoder(&buf).Decode(&state)
+				if err != nil {
+					panic(err)
+				}
+
+			case 1:
+				if state.world == nil {
+					panic("diff packet came before world")
+				}
+
+				old, err = bindiff.Forward(old, buf.Bytes())
+				if err != nil {
+					panic(err)
+				}
+				state = State{}
+				err = gob.NewDecoder(bytes.NewReader(old)).Decode(&state)
+				if err != nil {
+					panic(err)
+				}
+			}
+
+			state.world = &world
+			Render(src, res.Man_Whip, &state, nil)
+			frames <- toYCbCr(src)
 		}
 	}()
 
@@ -158,4 +144,31 @@ func EncodeVideo(w io.Writer, r io.Reader) error {
 	defer bw.Flush()
 
 	return EncodeAll(bw, frames)
+}
+
+func toYCbCr(src *image.RGBA) *image.YCbCr {
+	dst := image.NewYCbCr(src.Rect, image.YCbCrSubsampleRatio444)
+	i0 := src.PixOffset(src.Rect.Min.X, src.Rect.Min.Y)
+	i1 := dst.YOffset(dst.Rect.Min.X, dst.Rect.Min.Y)
+	i2 := dst.COffset(dst.Rect.Min.X, dst.Rect.Min.Y)
+	for y := src.Rect.Min.Y; y < src.Rect.Max.Y; y++ {
+		i0x := i0
+		i1x := i1
+		i2x := i2
+		for x := src.Rect.Min.X; x < src.Rect.Max.X; x++ {
+			y, cb, cr := color.RGBToYCbCr(src.Pix[i0x], src.Pix[i0x+1], src.Pix[i0x+2])
+
+			dst.Y[i1x] = y
+			dst.Cb[i2x] = cb
+			dst.Cr[i2x] = cr
+
+			i0x += 4
+			i1x++
+			i2x++
+		}
+		i0 += src.Stride
+		i1 += dst.YStride
+		i2 += dst.CStride
+	}
+	return dst
 }

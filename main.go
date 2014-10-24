@@ -126,12 +126,22 @@ func main() {
 		go func() {
 			var l [binary.MaxVarintLen64]byte
 
+			i := binary.PutUvarint(l[:], 1)
+
+			n, err := w.Write(l[:i])
+			if err == nil && n != i {
+				err = io.ErrShortWrite
+			}
+			if err != nil {
+				panic(err)
+			}
+
 			for {
 				select {
 				case b := <-replay:
 					i := binary.PutUvarint(l[:], uint64(len(b)))
 
-					n, err := w.Write(l[:i])
+					n, err = w.Write(l[:i])
 					if err == nil && n != i {
 						err = io.ErrShortWrite
 					}
