@@ -19,7 +19,7 @@ import (
 )
 
 func Client(addr string) {
-	defer close(quit)
+	defer quitWait.Done()
 	defer wde.Stop()
 
 	w, err := wde.NewWindow(*flagWidth, *flagHeight)
@@ -230,7 +230,7 @@ func Client(addr string) {
 		case event := <-w.EventChan():
 			switch e := event.(type) {
 			case wde.CloseEvent:
-				return
+				close(quitRequest)
 			case wde.ResizeEvent:
 				select {
 				case renderResize <- struct{}{}:
@@ -357,6 +357,9 @@ func Client(addr string) {
 			default:
 				panic(fmt.Errorf("unexpected event type %T in %#v", event, event))
 			}
+
+		case <-quitRequest:
+			return
 		}
 	}
 }
@@ -382,20 +385,21 @@ var (
 
 func graphicsInit() {
 	graphicsOnce.Do(func() {
+		const FontName = "luxi"
 		const FontStyleBoldItalic = draw2d.FontStyleBold | draw2d.FontStyleItalic
 		for d, b := range map[draw2d.FontData][]byte{
-			draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleBold}:    res.LuximbTtf,
-			draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilyMono, Style: FontStyleBoldItalic}:     res.LuximbiTtf,
-			draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleNormal}:  res.LuximrTtf,
-			draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleItalic}:  res.LuximriTtf,
-			draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySerif, Style: draw2d.FontStyleBold}:   res.LuxirbTtf,
-			draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySerif, Style: FontStyleBoldItalic}:    res.LuxirbiTtf,
-			draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySerif, Style: draw2d.FontStyleNormal}: res.LuxirrTtf,
-			draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySerif, Style: draw2d.FontStyleItalic}: res.LuxirriTtf,
-			draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySans, Style: draw2d.FontStyleBold}:    res.LuxisbTtf,
-			draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySans, Style: FontStyleBoldItalic}:     res.LuxisbiTtf,
-			draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySans, Style: draw2d.FontStyleNormal}:  res.LuxisrTtf,
-			draw2d.FontData{Name: "luxi", Family: draw2d.FontFamilySans, Style: draw2d.FontStyleItalic}:  res.LuxisriTtf,
+			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleBold}:    res.LuximbTtf,
+			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilyMono, Style: FontStyleBoldItalic}:     res.LuximbiTtf,
+			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleNormal}:  res.LuximrTtf,
+			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilyMono, Style: draw2d.FontStyleItalic}:  res.LuximriTtf,
+			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySerif, Style: draw2d.FontStyleBold}:   res.LuxirbTtf,
+			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySerif, Style: FontStyleBoldItalic}:    res.LuxirbiTtf,
+			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySerif, Style: draw2d.FontStyleNormal}: res.LuxirrTtf,
+			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySerif, Style: draw2d.FontStyleItalic}: res.LuxirriTtf,
+			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySans, Style: draw2d.FontStyleBold}:    res.LuxisbTtf,
+			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySans, Style: FontStyleBoldItalic}:     res.LuxisbiTtf,
+			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySans, Style: draw2d.FontStyleNormal}:  res.LuxisrTtf,
+			draw2d.FontData{Name: FontName, Family: draw2d.FontFamilySans, Style: draw2d.FontStyleItalic}:  res.LuxisriTtf,
 		} {
 			font, err := truetype.Parse(b)
 			if err != nil {
@@ -549,6 +553,8 @@ func graphicsInit() {
 }
 
 func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, state <-chan State, err <-chan error) {
+	defer quitWait.Done()
+
 	img := image.NewRGBA(w.Screen().Bounds())
 	var m res.Man
 	var s State
@@ -565,6 +571,8 @@ func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, sta
 		case s = <-state:
 		case e = <-err:
 		case <-repaint:
+		case <-quitRequest:
+			return
 		}
 	}
 }

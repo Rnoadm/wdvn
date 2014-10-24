@@ -13,6 +13,7 @@ import (
 )
 
 func Listen(l net.Listener, world *World) {
+	defer quitWait.Done()
 	defer l.Close()
 
 	var (
@@ -22,40 +23,65 @@ func Listen(l net.Listener, world *World) {
 		input      = make(chan *res.Packet)
 		state      = make(chan (<-chan []byte))
 		connection = make(chan bool)
+		accept     = make(chan net.Conn)
 	)
+	defer close(register)
+	quitWait.Add(2)
 	go Multicast(broadcast, register, unregister)
 	go Manager(input, state, connection, broadcast, world)
 
 	var connected [res.Man_count]uint64
 
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			panic(err)
-		}
-
-		ch := make(chan *res.Packet)
-		register <- ch
-		connection <- true
-
-		go Serve(conn, ch, broadcast, state, world, input, &connected, func() {
-			go func() {
-				for _ = range ch {
-					// do nothing
+	go func() {
+		defer close(accept)
+		for {
+			conn, err := l.Accept()
+			if err == nil {
+				accept <- conn
+			} else {
+				log.Print(err)
+				if ne, ok := err.(net.Error); !ok || !ne.Temporary() {
+					return
 				}
-			}()
-			unregister <- ch
-			connection <- false
-		})
+			}
+		}
+	}()
+
+	for {
+		select {
+		case conn := <-accept:
+			ch := make(chan *res.Packet)
+			register <- ch
+			connection <- true
+
+			quitWait.Add(1)
+			go Serve(conn, ch, broadcast, state, world, input, &connected, func() {
+				go func() {
+					for _ = range ch {
+						// discard
+					}
+				}()
+				unregister <- ch
+				connection <- false
+				quitWait.Done()
+			})
+
+		case <-quitRequest:
+			return
+		}
 	}
 }
 
 func Multicast(broadcast <-chan *res.Packet, register, unregister <-chan chan<- *res.Packet) {
+	defer quitWait.Done()
 	writers := make(map[chan<- *res.Packet]struct{})
 
 	for {
 		select {
-		case ch := <-register:
+		case ch, ok := <-register:
+			if !ok {
+				return
+			}
 			writers[ch] = struct{}{}
 
 		case ch := <-unregister:
@@ -187,33 +213,34 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <
 }
 
 func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan bool, broadcast chan<- *res.Packet, world *World) {
+	defer quitWait.Done()
+
 	var (
 		state            = NewState(world)
 		input            [res.Man_count]res.Packet
 		connection_count int
 		prev             []byte
-		tick             = time.Tick(time.Second / TicksPerSecond)
+		tick             = time.NewTicker(time.Second / TicksPerSecond)
 		ch               = make(chan []byte)
 	)
+	defer tick.Stop()
 
 	if replay != nil {
-		{
-			var buf bytes.Buffer
-			err := buf.WriteByte(0)
-			if err != nil {
-				panic(err)
-			}
-			err = gob.NewEncoder(&buf).Encode(world)
-			if err != nil {
-				panic(err)
-			}
-			err = gob.NewEncoder(&buf).Encode(state)
-			if err != nil {
-				panic(err)
-			}
-
-			replay <- buf.Bytes()
+		var buf bytes.Buffer
+		err := buf.WriteByte(0)
+		if err != nil {
+			panic(err)
 		}
+		err = gob.NewEncoder(&buf).Encode(world)
+		if err != nil {
+			panic(err)
+		}
+		err = gob.NewEncoder(&buf).Encode(state)
+		if err != nil {
+			panic(err)
+		}
+
+		replay <- buf.Bytes()
 	}
 
 	for {
@@ -240,7 +267,7 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 			}
 			ch <- buf.Bytes()
 
-		case <-tick:
+		case <-tick.C:
 			t := state.Tick
 
 			state.Update(&input)
@@ -274,6 +301,9 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 					panic("connection count underflow")
 				}
 			}
+
+		case <-quitRequest:
+			return
 		}
 	}
 }

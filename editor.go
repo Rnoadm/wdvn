@@ -14,7 +14,7 @@ import (
 func Editor(filename string) {
 	graphicsInit()
 
-	defer close(quit)
+	defer quitWait.Done()
 	defer wde.Stop()
 
 	w, err := wde.NewWindow(*flagWidth, *flagHeight)

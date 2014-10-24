@@ -11,6 +11,7 @@ import (
 	"image"
 	"image/color"
 	"io"
+	"log"
 )
 
 func EncodeAll(w *bufio.Writer, frames <-chan *image.YCbCr) error {
@@ -69,15 +70,15 @@ func EncodeVideo(w io.Writer, r io.Reader) error {
 
 		version, err := binary.ReadUvarint(br)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		switch version {
 		case 0:
-			panic("invalid replay version")
+			log.Fatal("invalid replay version")
 		case 1:
 			// do nothing
 		default:
-			panic("replay from newer version")
+			log.Fatal("replay from newer version")
 		}
 
 		for {
@@ -86,7 +87,7 @@ func EncodeVideo(w io.Writer, r io.Reader) error {
 				return
 			}
 			if err != nil {
-				panic(err)
+				log.Fatal(err)
 			}
 
 			n, err := io.CopyN(&buf, br, int64(l))
@@ -94,12 +95,12 @@ func EncodeVideo(w io.Writer, r io.Reader) error {
 				err = io.ErrUnexpectedEOF
 			}
 			if err != nil {
-				panic(err)
+				log.Fatal(err)
 			}
 
 			t, err := buf.ReadByte()
 			if err != nil {
-				panic(err)
+				log.Fatal(err)
 			}
 
 			switch t {
@@ -107,7 +108,7 @@ func EncodeVideo(w io.Writer, r io.Reader) error {
 				world, state = World{}, State{}
 				err = gob.NewDecoder(&buf).Decode(&world)
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 
 				old = make([]byte, buf.Len())
@@ -115,22 +116,22 @@ func EncodeVideo(w io.Writer, r io.Reader) error {
 
 				err = gob.NewDecoder(&buf).Decode(&state)
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 
 			case 1:
 				if state.world == nil {
-					panic("diff packet came before world")
+					log.Fatal("diff packet came before world")
 				}
 
 				old, err = bindiff.Forward(old, buf.Bytes())
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 				state = State{}
 				err = gob.NewDecoder(bytes.NewReader(old)).Decode(&state)
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 			}
 

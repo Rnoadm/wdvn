@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/pprof"
+	"sync"
 	"time"
 )
 
@@ -24,29 +25,34 @@ func init() {
 }
 
 var (
-	flagHost    = flag.String("host", "", "host this game, like \":7777\"")
+	flagHost    = flag.String("host", "", "Start a dedicated server on this address. Example: \":7777\"")
 	flagAddress = flag.String("addr", "", "address to connect to, like \""+net.JoinHostPort(externalIP(), "7777")+"\"")
+	flagEditor  = flag.String("edit", "", "filename of level to edit")
 
-	flagLevel  = flag.String("level", "", "filename of level to play")
-	flagEditor = flag.String("edit", "", "filename of level to edit")
-
+	flagLevel       = flag.String("level", "", "filename of level to play")
 	flagWidth       = flag.Int("w", 800, "width")
 	flagHeight      = flag.Int("h", 300, "height")
 	flagSplitScreen = flag.Bool("ss", false, "split screen")
 
 	flagRecord     = flag.String("record", "", "record a replay to this file")
-	flagPlayback   = flag.String("replay", "", "play a replay from this file as YUV4MPEG2 on stdout")
+	flagRender     = flag.String("render", "", "play a replay from this file as YUV4MPEG2 on stdout")
 	flagProfile    = flag.String("prof", "", "start a pprof server for developer use")
 	flagCPUProfile = flag.Bool("cpuprofile", false, "profile to a file instead of starting a server")
 )
 
 var (
-	quit   = make(chan struct{})
-	replay chan []byte
+	quitRequest = make(chan struct{})
+	quitWait    sync.WaitGroup
+	replay      chan []byte
 )
 
 func main() {
 	flag.Parse()
+
+	if *flagHost != "" && *flagAddress != "" || *flagAddress != "" && *flagEditor != "" || *flagEditor != "" && *flagHost != "" {
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	if *flagProfile != "" {
 		if *flagCPUProfile {
@@ -65,39 +71,61 @@ func main() {
 		}
 	}
 
-	signalch := make(chan os.Signal, 1)
-	signal.Notify(signalch, os.Interrupt, os.Kill)
-	go func() {
-		<-signalch
-		close(quit)
-	}()
-
-	if *flagEditor != "" {
-		go Editor(*flagEditor)
-
-		wde.Run()
-		<-quit
-		return
-	}
-
-	if *flagPlayback != "" {
-		f, err := os.Open(*flagPlayback)
+	if *flagRender != "" {
+		f, err := os.Open(*flagRender)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		defer f.Close()
 
 		r, err := gzip.NewReader(f)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		defer r.Close()
 
 		err = EncodeVideo(os.Stdout, r)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 
+		return
+	}
+
+	signalch := make(chan os.Signal)
+	signal.Notify(signalch, os.Interrupt)
+	go func() {
+		<-signalch
+		log.Println("Requesting exit. ^C again to terminate immediately.")
+		close(quitRequest)
+	}()
+
+	level := FooLevel
+	if *flagLevel != "" {
+		level = &World{}
+		func() {
+			f, err := os.Open(*flagLevel)
+			if err != nil {
+				panic(err)
+			}
+			defer f.Close()
+
+			err = gob.NewDecoder(f).Decode(level)
+			if err != nil {
+				panic(err)
+			}
+		}()
+	}
+
+	if *flagHost != "" {
+		l, err := net.Listen("tcp", *flagHost)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		quitWait.Add(1)
+		go Listen(l, level)
+		quitWait.Wait()
 		return
 	}
 
@@ -114,16 +142,12 @@ func main() {
 		}
 		defer w.Close()
 
-		finishReplay := make(chan chan struct{})
-		defer func() {
-			ch := make(chan struct{})
-			finishReplay <- ch
-			<-ch
-		}()
-
 		replay = make(chan []byte, 64)
 
+		quitWait.Add(1)
 		go func() {
+			defer quitWait.Done()
+
 			var l [binary.MaxVarintLen64]byte
 
 			i := binary.PutUvarint(l[:], 1)
@@ -157,32 +181,14 @@ func main() {
 						panic(err)
 					}
 
-				case ch := <-finishReplay:
-					ch <- struct{}{}
+				case <-quitRequest:
 					return
 				}
 			}
 		}()
 	}
 
-	level := FooLevel
-	if *flagLevel != "" {
-		level = &World{}
-		func() {
-			f, err := os.Open(*flagLevel)
-			if err != nil {
-				panic(err)
-			}
-			defer f.Close()
-
-			err = gob.NewDecoder(f).Decode(level)
-			if err != nil {
-				panic(err)
-			}
-		}()
-	}
-
-	if *flagHost == "" && *flagAddress == "" {
+	if *flagAddress == "" {
 		addr := externalIP()
 
 		l, err := net.Listen("tcp", net.JoinHostPort(addr, "0"))
@@ -190,28 +196,16 @@ func main() {
 			panic(err)
 		}
 
+		quitWait.Add(1)
 		go Listen(l, level)
-		go Client(l.Addr().String())
 
-		wde.Run()
-		<-quit
-		return
+		*flagAddress = l.Addr().String()
 	}
 
-	if *flagHost != "" {
-		l, err := net.Listen("tcp", *flagHost)
-		if err != nil {
-			panic(err)
-		}
-
-		go Listen(l, level)
-	}
-	if *flagAddress != "" {
-		go Client(*flagAddress)
-
-		wde.Run()
-	}
-	<-quit
+	quitWait.Add(1)
+	go Client(*flagAddress)
+	wde.Run()
+	quitWait.Wait()
 }
 
 // from http://stackoverflow.com/a/23558495/2664560
