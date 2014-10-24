@@ -138,7 +138,7 @@ func render(img *image.RGBA, me res.Man, state *State) {
 					if mm.WhipStop != 0 && !mm.WhipEnd.Zero() {
 						gc := draw2d.NewGraphicContext(img)
 						gc.SetStrokeColor(color.Black)
-						gc.SetLineWidth(0.5)
+						gc.SetLineWidth(1)
 						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
 						gc.LineTo(float64(mm.WhipEnd.X/PixelSize+offX), float64(mm.WhipEnd.Y/PixelSize+offY))
 						gc.Stroke()
@@ -146,10 +146,54 @@ func render(img *image.RGBA, me res.Man, state *State) {
 					if mm.WhipStop == 0 && !mm.WhipTether.Zero() {
 						gc := draw2d.NewGraphicContext(img)
 						gc.SetStrokeColor(color.Black)
-						gc.SetLineWidth(0.5)
+						gc.SetLineWidth(1)
 						gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
 						gc.LineTo(float64(mm.WhipTether.X/PixelSize+offX), float64(mm.WhipTether.Y/PixelSize+offY))
 						gc.Stroke()
+					}
+					if mm.WhipStart != 0 && mm.WhipStop == 0 {
+						velocity, whipEnd, _, collide, _ := mm.Whip(state, u)
+
+						if !whipEnd.Zero() {
+							gc := draw2d.NewGraphicContext(img)
+							gc.SetStrokeColor(color.Black)
+							gc.SetLineWidth(0.25)
+							gc.MoveTo(float64(pos.X/PixelSize+offX), float64(pos.Y/PixelSize-int64(r.Dy()/2)+offY))
+							gc.LineTo(float64(whipEnd.X/PixelSize+offX), float64(whipEnd.Y/PixelSize+offY))
+							gc.Stroke()
+
+							if mm.WhipPull {
+								velocity = u.Velocity.Sub(velocity)
+								sprite := u.Sprite(state, u)
+								for j := int64(VelocityClones); j >= 0; j-- {
+									pos := u.Position
+									pos.X += velocity.X * j / TicksPerSecond / VelocityClones
+									pos.Y += velocity.Y * j / TicksPerSecond / VelocityClones
+
+									r := sprite.Rect.Sub(sprite.Rect.Min).Add(image.Point{
+										X: int(pos.X/PixelSize+offX) - sprite.Rect.Dx()/2,
+										Y: int(pos.Y/PixelSize+offY) - sprite.Rect.Dy(),
+									})
+
+									draw.DrawMask(img, r, sprite, sprite.Rect.Min, fade[j], image.ZP, draw.Over)
+								}
+							} else if collide != nil {
+								velocity = velocity.Add(collide.Velocity)
+								sprite := collide.Sprite(state, collide)
+								for j := int64(VelocityClones); j >= 0; j-- {
+									pos := collide.Position
+									pos.X += velocity.X * j / TicksPerSecond / VelocityClones
+									pos.Y += velocity.Y * j / TicksPerSecond / VelocityClones
+
+									r := sprite.Rect.Sub(sprite.Rect.Min).Add(image.Point{
+										X: int(pos.X/PixelSize+offX) - sprite.Rect.Dx()/2,
+										Y: int(pos.Y/PixelSize+offY) - sprite.Rect.Dy(),
+									})
+
+									draw.DrawMask(img, r, sprite, sprite.Rect.Min, fade[j], image.ZP, draw.Over)
+								}
+							}
+						}
 					}
 				}
 			}

@@ -8,6 +8,20 @@ import (
 	"math"
 )
 
+func Scale(delta Coord, distance float64) Coord {
+	if delta.Zero() {
+		return delta
+	}
+	actual := math.Hypot(float64(delta.X), float64(delta.Y))
+	delta.X = int64(float64(delta.X) * distance / actual)
+	delta.Y = int64(float64(delta.Y) * distance / actual)
+	return delta
+}
+
+func Lerp(min, max int64, tmin, tmax, t uint64) int64 {
+	return min + (max-min)*int64(t)/int64(tmax-tmin)
+}
+
 type Man interface {
 	UnitData
 	Man() res.Man
@@ -175,7 +189,7 @@ func (m *WhipMan) UpdateDead(state *State, u *Unit) {
 func (m *WhipMan) Update(state *State, u *Unit) {
 	m.ManUnitData.Update(state, u)
 
-	if m.WhipStop != 0 && m.WhipStop-m.WhipStart < state.Tick-m.WhipStop {
+	if m.WhipStop != 0 && (m.WhipStop-m.WhipStart)/10 < state.Tick-m.WhipStop {
 		m.WhipStart, m.WhipStop, m.WhipEnd = 0, 0, Coord{}
 	}
 	if !m.WhipTether.Zero() {
@@ -209,46 +223,59 @@ func (m *WhipMan) Update(state *State, u *Unit) {
 	} else if m.WhipStart != 0 {
 		if m.WhipStop == 0 {
 			m.WhipStop = state.Tick
-			start, stop := u.Position, m.Target()
-			start.Y -= u.Size.Y / 2
-			delta := stop.Sub(start)
 
-			dist := math.Hypot(float64(delta.X), float64(delta.Y))
 			if m.WhipStart < m.WhipStop-WhipTimeMax {
 				m.WhipStart = m.WhipStop - WhipTimeMax
 			}
-			u.Gravity, m.WhipEnd, m.WhipTether = 0, Coord{}, Coord{}
-			if m.WhipStart < m.WhipStop-WhipTimeMin {
-				stop.X = start.X + int64(float64(delta.X)*WhipDistance/dist)
-				stop.Y = start.Y + int64(float64(delta.Y)*WhipDistance/dist)
 
-				tr := state.Trace(start, stop, Coord{1, 1}, false)
-				collide := tr.Collide(&state.Mans[res.Man_Whip])
-				m.WhipEnd = tr.End
+			u.Gravity, m.WhipTether = 0, Coord{}
+			velocity, whipEnd, hurt, collide, hitWorld := m.Whip(state, u)
+			m.WhipEnd = whipEnd
+			collide.Hurt(state, u, hurt)
 
-				if collide != nil && !collide.IsMan() {
-					damage := int64(WhipDamageMin + (WhipDamageMax-WhipDamageMin)*(m.WhipStop-m.WhipStart)/(WhipTimeMax-WhipTimeMin))
-					collide.Hurt(state, u, damage)
+			if m.WhipPull {
+				u.Velocity = u.Velocity.Sub(velocity)
+				if collide == nil && hitWorld {
+					m.WhipTether = whipEnd
 				}
-
-				dx, dy := start.X-tr.End.X, start.Y-tr.End.Y
-				dist = math.Hypot(float64(dx), float64(dy))
-				if dist > 0 && (collide != nil || tr.HitWorld) {
-					speed := float64(WhipSpeedMin+(WhipSpeedMax-WhipSpeedMin)*(m.WhipStop-m.WhipStart)/(WhipTimeMax-WhipTimeMin)) / dist
-					if m.WhipPull {
-						u.Velocity.X += int64(float64(-dx) * speed)
-						u.Velocity.Y += int64(float64(-dy) * speed)
-						if collide == nil {
-							m.WhipTether = tr.End
-						}
-					} else if collide != nil {
-						collide.Velocity.X += int64(float64(dx) * speed)
-						collide.Velocity.Y += int64(float64(dy) * speed)
-					}
-				}
+			} else if collide != nil {
+				collide.Velocity = collide.Velocity.Add(velocity)
 			}
 		}
 	}
+}
+
+func (m *WhipMan) Whip(state *State, u *Unit) (velocity, whipEnd Coord, hurt int64, collide *Unit, hitWorld bool) {
+	if m.WhipStart == 0 {
+		return
+	}
+	t := state.Tick - m.WhipStart
+	if t > WhipTimeMax {
+		t = WhipTimeMax
+	}
+	if t < WhipTimeMin {
+		return
+	}
+
+	start := u.Position
+	start.Y -= u.Size.Y / 2
+	delta := m.Target().Sub(start)
+	stop := start.Add(Scale(delta, WhipDistance))
+
+	tr := state.Trace(start, stop, Coord{1, 1}, false)
+	collide = tr.Collide(u)
+	whipEnd = tr.End
+	hitWorld = tr.HitWorld
+
+	if collide != nil && !collide.IsMan() {
+		hurt = Lerp(WhipDamageMin, WhipDamageMax, WhipTimeMin, WhipTimeMax, t)
+	}
+
+	if start != tr.End && (collide != nil || tr.HitWorld) {
+		velocity = Scale(start.Sub(tr.End), float64(Lerp(WhipSpeedMin, WhipSpeedMax, WhipTimeMin, WhipTimeMax, t)))
+	}
+
+	return
 }
 
 type DensityMan struct {
@@ -312,10 +339,7 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 
 	if m.Input_.GetMouse2() == res.Button_pressed {
 		start := u.Position.Sub(Coord{0, u.Size.Y / 2})
-		delta := m.Target().Sub(start)
-		dist := math.Hypot(float64(delta.X), float64(delta.Y))
-		delta.X = int64(float64(delta.X) * VacuumDistance / dist)
-		delta.Y = int64(float64(delta.Y) * VacuumDistance / dist)
+		delta := Scale(m.Target().Sub(start), VacuumDistance)
 		tr := state.Trace(start, start.Add(delta), Coord{1, 1}, false)
 		if collide := tr.Collide(u); collide != nil {
 			if m.Held_ == 0 {
@@ -349,11 +373,7 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 			} else {
 				h.Position.X -= u.Size.X/2 + h.Size.X/2 + PixelSize
 			}
-			h.Velocity = m.Target().Sub(u.Position).Add(Coord{0, u.Size.Y / 2})
-			dist := math.Hypot(float64(h.Velocity.X), float64(h.Velocity.Y))
-			h.Velocity.X = int64(float64(h.Velocity.X) * VacuumSpeed * float64(state.Tick-m.HeldSince_) / dist)
-			h.Velocity.Y = int64(float64(h.Velocity.Y) * VacuumSpeed * float64(state.Tick-m.HeldSince_) / dist)
-			h.Velocity = h.Velocity.Add(u.Velocity)
+			h.Velocity = Scale(m.Target().Sub(u.Position).Add(Coord{0, u.Size.Y / 2}), VacuumSpeed*float64(state.Tick-m.HeldSince_)).Add(u.Velocity)
 			tr := state.Trace(h.Position, h.Position.Add(h.Velocity.Unit()), h.Size, false)
 			collide := tr.Collide(u)
 			if collide == nil && !tr.HitWorld {
@@ -376,11 +396,7 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 			} else {
 				lemon.Position.X -= u.Size.X/2 + LemonSize.X/2 + PixelSize
 			}
-			lemon.Velocity = m.Target().Sub(u.Position).Add(Coord{0, u.Size.Y / 2})
-			dist := math.Hypot(float64(lemon.Velocity.X), float64(lemon.Velocity.Y))
-			lemon.Velocity.X = int64(float64(lemon.Velocity.X) * LemonSpeed / dist)
-			lemon.Velocity.Y = int64(float64(lemon.Velocity.Y) * LemonSpeed / dist)
-			lemon.Velocity = lemon.Velocity.Add(u.Velocity)
+			lemon.Velocity = Scale(m.Target().Sub(u.Position).Add(Coord{0, u.Size.Y / 2}), LemonSpeed).Add(u.Velocity)
 			tr := state.Trace(lemon.Position, lemon.Position.Add(lemon.Velocity.Unit()), lemon.Size, false)
 			collide := tr.Collide(u)
 			if collide == nil && !tr.HitWorld {

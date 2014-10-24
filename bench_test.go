@@ -44,116 +44,107 @@ func makeState() *State {
 		state.Update(&input)
 	}
 
-	input[res.Man_Whip].Mouse2 = Button_released
-	state.Update(&input)
-
 	return state
 }
 
+var benchState = makeState()
+
 func init() {
-	clientInitOnce.Do(clientInit)
+	graphicsInit()
 }
 
 func BenchmarkRender480p(b *testing.B) {
 	img := image.NewRGBA(image.Rect(0, 0, 720, 480))
-	state := makeState()
 	*flagSplitScreen = false
-	Render(img, res.Man_Whip, state, nil)
+	Render(img, res.Man_Whip, benchState, nil)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		Render(img, res.Man_Whip, state, nil)
+		Render(img, res.Man_Whip, benchState, nil)
 	}
 }
 
 func BenchmarkRender480pSS(b *testing.B) {
 	img := image.NewRGBA(image.Rect(0, 0, 720, 480))
-	state := makeState()
 	*flagSplitScreen = true
-	Render(img, res.Man_Whip, state, nil)
+	Render(img, res.Man_Whip, benchState, nil)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		Render(img, res.Man_Whip, state, nil)
+		Render(img, res.Man_Whip, benchState, nil)
 	}
 }
 
 func BenchmarkRender720p(b *testing.B) {
 	img := image.NewRGBA(image.Rect(0, 0, 1280, 720))
-	state := makeState()
 	*flagSplitScreen = false
-	Render(img, res.Man_Whip, state, nil)
+	Render(img, res.Man_Whip, benchState, nil)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		Render(img, res.Man_Whip, state, nil)
+		Render(img, res.Man_Whip, benchState, nil)
 	}
 }
 
 func BenchmarkRender720pSS(b *testing.B) {
 	img := image.NewRGBA(image.Rect(0, 0, 1280, 720))
-	state := makeState()
 	*flagSplitScreen = true
-	Render(img, res.Man_Whip, state, nil)
+	Render(img, res.Man_Whip, benchState, nil)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		Render(img, res.Man_Whip, state, nil)
+		Render(img, res.Man_Whip, benchState, nil)
 	}
 }
 
 func BenchmarkRender1080p(b *testing.B) {
 	img := image.NewRGBA(image.Rect(0, 0, 1920, 1080))
-	state := makeState()
 	*flagSplitScreen = false
-	Render(img, res.Man_Whip, state, nil)
+	Render(img, res.Man_Whip, benchState, nil)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		Render(img, res.Man_Whip, state, nil)
+		Render(img, res.Man_Whip, benchState, nil)
 	}
 }
 
 func BenchmarkRender1080pSS(b *testing.B) {
 	img := image.NewRGBA(image.Rect(0, 0, 1920, 1080))
-	state := makeState()
 	*flagSplitScreen = true
-	Render(img, res.Man_Whip, state, nil)
+	Render(img, res.Man_Whip, benchState, nil)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		Render(img, res.Man_Whip, state, nil)
+		Render(img, res.Man_Whip, benchState, nil)
 	}
 }
 
 func BenchmarkRender4K(b *testing.B) {
 	img := image.NewRGBA(image.Rect(0, 0, 4096, 2160))
-	state := makeState()
 	*flagSplitScreen = false
-	Render(img, res.Man_Whip, state, nil)
+	Render(img, res.Man_Whip, benchState, nil)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		Render(img, res.Man_Whip, state, nil)
+		Render(img, res.Man_Whip, benchState, nil)
 	}
 }
 
 func BenchmarkRender4KSS(b *testing.B) {
 	img := image.NewRGBA(image.Rect(0, 0, 4096, 2160))
-	state := makeState()
 	*flagSplitScreen = true
-	Render(img, res.Man_Whip, state, nil)
+	Render(img, res.Man_Whip, benchState, nil)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		Render(img, res.Man_Whip, state, nil)
+		Render(img, res.Man_Whip, benchState, nil)
 	}
 }
