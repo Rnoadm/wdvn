@@ -16,6 +16,7 @@ type Man interface {
 	Target() Coord
 	Input(*res.Packet)
 	Checkpoint() *Coord
+	Crouching() bool
 }
 
 func init() {
@@ -117,6 +118,9 @@ func (m *ManUnitData) ShowDamage() bool {
 	return true
 }
 func (m *ManUnitData) Mass(state *State, u *Unit) int64 {
+	if m.Crouching_ {
+		return 2000
+	}
 	return 1000
 }
 func (m *ManUnitData) Man() res.Man {
@@ -142,6 +146,9 @@ func (m *ManUnitData) Lives() uint64 {
 }
 func (m *ManUnitData) Checkpoint() *Coord {
 	return &m.Checkpoint_
+}
+func (m *ManUnitData) Crouching() bool {
+	return m.Crouching_
 }
 
 type WhipMan struct {

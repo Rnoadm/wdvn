@@ -84,6 +84,9 @@ func (u *Unit) Update(state *State) {
 	u.Velocity.Y += u.Acceleration.Y
 	if !onGround {
 		u.Velocity.Y += Gravity + u.Gravity
+		if m, ok := u.UnitData.(Man); ok && m.Crouching() {
+			u.Velocity.Y += Gravity + u.Gravity
+		}
 	}
 
 	if u.Velocity.X > TerminalVelocity {
