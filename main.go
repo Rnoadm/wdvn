@@ -24,8 +24,8 @@ func init() {
 }
 
 var (
-	flagHost        = flag.String("host", "", "host this game, like \":7777\"")
-	flagAddress     = flag.String("addr", "", "address to connect to, like \""+externalIP()+":7777\"")
+	flagHost    = flag.String("host", "", "host this game, like \":7777\"")
+	flagAddress = flag.String("addr", "", "address to connect to, like \""+net.JoinHostPort(externalIP(), "7777")+"\"")
 
 	flagLevel  = flag.String("level", "", "filename of level to play")
 	flagEditor = flag.String("edit", "", "filename of level to edit")
@@ -175,7 +175,7 @@ func main() {
 	if *flagHost == "" && *flagAddress == "" {
 		addr := externalIP()
 
-		l, err := net.Listen("tcp", addr+":0")
+		l, err := net.Listen("tcp", net.JoinHostPort(addr, "0"))
 		if err != nil {
 			panic(err)
 		}

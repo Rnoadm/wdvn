@@ -19,13 +19,18 @@ import (
 	"time"
 )
 
-func ClientNet(addr string, read chan<- *res.Packet, write <-chan *res.Packet, errors chan<- error) {
+func ClientNet(addr string, read chan<- *res.Packet, write <-chan *res.Packet, errors chan<- error, quit <-chan struct{}) {
+	backOff := time.Second
 	for {
-		func() {
-			conn, err := net.Dial("tcp", addr)
+		if func() bool {
+			conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 			if err != nil {
-				time.Sleep(time.Second)
-				return
+				errors <- err
+				time.Sleep(backOff)
+				backOff *= 2
+				return false
+			} else {
+				backOff = time.Second
 			}
 			defer conn.Close()
 
@@ -48,10 +53,12 @@ func ClientNet(addr string, read chan<- *res.Packet, write <-chan *res.Packet, e
 
 				case err := <-errorsch:
 					errors <- err
-					return
+					return false
 				}
 			}
-		}()
+		}() {
+			return
+		}
 	}
 }
 
@@ -70,7 +77,7 @@ func Client(addr string) {
 	w.Show()
 
 	read, write, errors := make(chan *res.Packet), make(chan *res.Packet), make(chan error, 2)
-	go ClientNet(addr, read, write, errors)
+	go ClientNet(addr, read, write, errors, quit)
 
 	var (
 		me        res.Man
@@ -377,8 +384,13 @@ func Client(addr string) {
 }
 
 var (
+	mancolors [res.Man_count]color.RGBA = [...]color.RGBA{
+		res.Man_Whip:    color.RGBA{192, 0, 0, 255},
+		res.Man_Density: color.RGBA{128, 128, 0, 255},
+		res.Man_Vacuum:  color.RGBA{0, 128, 0, 255},
+		res.Man_Normal:  color.RGBA{0, 0, 192, 255},
+	}
 	mansprites    [res.Man_count][2]*image.RGBA
-	mancolors     [res.Man_count]color.RGBA
 	manfills      [res.Man_count]*image.Uniform
 	terrain       []*image.RGBA
 	tilemask      [1 << 10]*image.Alpha
@@ -427,10 +439,6 @@ func clientInit() {
 		mansprites[i][0] = dst.SubImage(r1.Add(image.Pt(0, i*int(ManSize.Y/PixelSize)))).(*image.RGBA)
 		mansprites[i][1] = dst.SubImage(r2.Add(image.Pt(0, i*int(ManSize.Y/PixelSize)))).(*image.RGBA)
 	}
-	mancolors[res.Man_Whip] = color.RGBA{192, 0, 0, 255}
-	mancolors[res.Man_Density] = color.RGBA{128, 128, 0, 255}
-	mancolors[res.Man_Vacuum] = color.RGBA{0, 128, 0, 255}
-	mancolors[res.Man_Normal] = color.RGBA{0, 0, 192, 255}
 	for i := range manfills {
 		manfills[i] = image.NewUniform(mancolors[i])
 	}
@@ -586,10 +594,10 @@ func Render(img *image.RGBA, me res.Man, state *State, err error) {
 	draw.Draw(img, img.Rect, image.White, image.ZP, draw.Src)
 
 	if state.world == nil || state.Mans[0].UnitData == nil {
-		RenderText(img, "Connecting...", image.Pt(hx, hy), color.White, color.Black, true)
+		RenderText(img, "Connecting...", image.Pt(hx, hy), color.Black, color.White, true)
 
 		if err != nil {
-			RenderText(img, "Last error: "+err.Error(), image.Pt(img.Rect.Min.X+2, img.Rect.Max.Y-2), color.White, color.Black, false)
+			RenderText(img, "Last error: "+err.Error(), image.Pt(img.Rect.Min.X+2, img.Rect.Max.Y-6), color.Black, color.White, false)
 		}
 
 		return
