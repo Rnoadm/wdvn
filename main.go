@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"flag"
-	"fmt"
 	"github.com/skelterjohn/go.wde"
 	_ "github.com/skelterjohn/go.wde/init"
 	"io"
@@ -25,24 +24,20 @@ func init() {
 }
 
 var (
-	groupConnection = flag.NewFlagSet("Connection", flag.ExitOnError)
-	flagHost        = groupConnection.String("host", "", "host this game, like \":7777\"")
-	flagAddress     = groupConnection.String("addr", "", "address to connect to, like \""+externalIP()+":7777\"")
+	flagHost        = flag.String("host", "", "host this game, like \":7777\"")
+	flagAddress     = flag.String("addr", "", "address to connect to, like \""+externalIP()+":7777\"")
 
-	groupLevel = flag.NewFlagSet("Level", flag.ExitOnError)
-	flagLevel  = groupLevel.String("level", "", "filename of level to play")
-	flagEditor = groupLevel.String("edit", "", "filename of level to edit")
+	flagLevel  = flag.String("level", "", "filename of level to play")
+	flagEditor = flag.String("edit", "", "filename of level to edit")
 
-	groupRendering  = flag.NewFlagSet("Rendering", flag.ExitOnError)
-	flagWidth       = groupRendering.Int("w", 800, "width")
-	flagHeight      = groupRendering.Int("h", 300, "height")
-	flagSplitScreen = groupRendering.Bool("ss", false, "split screen")
+	flagWidth       = flag.Int("w", 800, "width")
+	flagHeight      = flag.Int("h", 300, "height")
+	flagSplitScreen = flag.Bool("ss", false, "split screen")
 
-	groupDeveloper = flag.NewFlagSet("Developer", flag.ExitOnError)
-	flagRecord     = groupDeveloper.String("record", "", "record a replay to this file")
-	flagPlayback   = groupDeveloper.String("replay", "", "play a replay from this file as YUV4MPEG2 on stdout")
-	flagProfile    = groupDeveloper.String("prof", "", "start a pprof server for developer use")
-	flagCPUProfile = groupDeveloper.Bool("cpuprofile", false, "profile to a file instead of starting a server")
+	flagRecord     = flag.String("record", "", "record a replay to this file")
+	flagPlayback   = flag.String("replay", "", "play a replay from this file as YUV4MPEG2 on stdout")
+	flagProfile    = flag.String("prof", "", "start a pprof server for developer use")
+	flagCPUProfile = flag.Bool("cpuprofile", false, "profile to a file instead of starting a server")
 )
 
 var (
@@ -51,22 +46,6 @@ var (
 )
 
 func main() {
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
-
-		fmt.Fprintf(os.Stderr, "\nConnection:\n")
-		groupConnection.PrintDefaults()
-
-		fmt.Fprintf(os.Stderr, "\nRendering:\n")
-		groupRendering.PrintDefaults()
-
-		fmt.Fprintf(os.Stderr, "\nLevel:\n")
-		groupLevel.PrintDefaults()
-
-		fmt.Fprintf(os.Stderr, "\nDeveloper:\n")
-		groupDeveloper.PrintDefaults()
-	}
-
 	flag.Parse()
 
 	if *flagProfile != "" {
