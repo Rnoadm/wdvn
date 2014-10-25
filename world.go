@@ -3,7 +3,6 @@ package main
 import (
 	"image"
 	"image/draw"
-	"sync"
 )
 
 const WorldRenderCacheSize = 64
@@ -34,7 +33,6 @@ type World struct {
 	Tiles    []WorldTile
 
 	rendered map[Coord]*image.RGBA
-	mtx      sync.Mutex
 }
 
 func (w *World) index(x, y int64) (i int, out int64) {
@@ -57,9 +55,6 @@ func (w *World) index(x, y int64) (i int, out int64) {
 }
 
 func (w *World) Render(img draw.Image, offX, offY int64) {
-	w.mtx.Lock()
-	defer w.mtx.Unlock()
-
 	if w.rendered == nil {
 		w.rendered = make(map[Coord]*image.RGBA)
 	}

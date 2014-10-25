@@ -128,9 +128,7 @@ func Editor(filename string) {
 
 			world.shrink()
 
-			world.mtx.Lock()
 			world.rendered = nil
-			world.mtx.Unlock()
 		case wde.MouseUpEvent:
 			// TODO
 		case wde.MouseEnteredEvent:
