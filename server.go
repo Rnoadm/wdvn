@@ -24,28 +24,13 @@ func Listen(l net.Listener, world *World) {
 		state      = make(chan (<-chan []byte))
 		connection = make(chan bool)
 		accept     = make(chan net.Conn)
+		connected  [res.Man_count]uint64
 	)
 	defer close(register)
-	quitWait.Add(2)
+	quitWait.Add(3)
 	go Multicast(broadcast, register, unregister)
 	go Manager(input, state, connection, broadcast, world)
-
-	var connected [res.Man_count]uint64
-
-	go func() {
-		defer close(accept)
-		for {
-			conn, err := l.Accept()
-			if err == nil {
-				accept <- conn
-			} else {
-				log.Print(err)
-				if ne, ok := err.(net.Error); !ok || !ne.Temporary() {
-					return
-				}
-			}
-		}
-	}()
+	go Accept(accept, l)
 
 	for {
 		select {
@@ -68,6 +53,31 @@ func Listen(l net.Listener, world *World) {
 
 		case <-quitRequest:
 			return
+		}
+	}
+}
+
+func Accept(accept chan<- net.Conn, l net.Listener) {
+	defer close(accept)
+	defer quitWait.Done()
+	for {
+		conn, err := l.Accept()
+		if err == nil {
+			select {
+			case accept <- conn:
+			case <-quitRequest:
+				return
+			}
+		} else {
+			select {
+			case <-quitRequest:
+				return
+			default:
+			}
+			log.Print(err)
+			if ne, ok := err.(net.Error); !ok || !ne.Temporary() {
+				return
+			}
 		}
 	}
 }
