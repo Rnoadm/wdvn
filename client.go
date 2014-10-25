@@ -14,7 +14,6 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
-	"log"
 	"sync"
 )
 
@@ -46,11 +45,9 @@ func Client(addr string) {
 					read = nil
 				}
 
-			case err, ok := <-errors:
+			case _, ok := <-errors:
 				if !ok {
 					errors = nil
-				} else {
-					log.Println(err)
 				}
 			}
 		}
@@ -140,6 +137,12 @@ func Client(addr string) {
 	for {
 		select {
 		case err := <-errors:
+			select {
+			case <-quitRequest:
+				return
+			default:
+			}
+
 			world = nil
 			state = State{}
 			noState = true
