@@ -222,16 +222,23 @@ type Trace struct {
 }
 
 func (t *Trace) Collide(ignore ...*Unit) *Unit {
-search:
-	for i := range t.Units {
-		for _, u := range ignore {
-			if u == t.Units[i].Unit {
-				continue search
+	return t.CollideFunc(func(u *Unit) bool {
+		for _, i := range ignore {
+			if u == i {
+				return false
 			}
 		}
-		t.End = Coord{t.Units[i].X, t.Units[i].Y}
-		t.Side = t.Units[i].Side
-		return t.Units[i].Unit
+		return true
+	})
+}
+
+func (t *Trace) CollideFunc(f func(*Unit) bool) *Unit {
+	for i := range t.Units {
+		if f(t.Units[i].Unit) {
+			t.End = Coord{t.Units[i].X, t.Units[i].Y}
+			t.Side = t.Units[i].Side
+			return t.Units[i].Unit
+		}
 	}
 	return nil
 }

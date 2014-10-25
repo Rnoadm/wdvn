@@ -102,7 +102,9 @@ func (m *ManUnitData) Update(state *State, u *Unit) {
 	} else {
 		if m.Crouching_ {
 			tr := state.Trace(u.Position, u.Position.Sub(ManSize.Sub(CrouchSize)), CrouchSize, false)
-			collide := tr.Collide(u)
+			collide := tr.CollideFunc(func(o *Unit) bool {
+				return m.CollideWith(state, u, o)
+			})
 			if collide == nil && !tr.HitWorld {
 				u.Size = ManSize
 				m.Crouching_ = false
@@ -163,6 +165,9 @@ func (m *ManUnitData) Checkpoint() *Coord {
 }
 func (m *ManUnitData) Crouching() bool {
 	return m.Crouching_
+}
+func (m *ManUnitData) CollideWith(state *State, u, o *Unit) bool {
+	return u != o
 }
 
 type WhipMan struct {
@@ -341,7 +346,9 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 		start := u.Position.Sub(Coord{0, u.Size.Y / 2})
 		delta := Scale(m.Target().Sub(start), VacuumDistance)
 		tr := state.Trace(start, start.Add(delta), Coord{1, 1}, false)
-		if collide := tr.Collide(u); collide != nil {
+		if collide := tr.CollideFunc(func(o *Unit) bool {
+			return m.CollideWith(state, u, o)
+		}); collide != nil {
 			if m.Held_ == 0 {
 				if collide.Position.Sub(Coord{0, collide.Size.Y / 2}).Sub(start).LengthSquared() < (u.Size.X+collide.Size.X)*(u.Size.X+collide.Size.X) {
 					for i := range state.Mans {
@@ -375,7 +382,9 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 			}
 			h.Velocity = Scale(m.Target().Sub(u.Position).Add(Coord{0, u.Size.Y / 2}), VacuumSpeed*float64(state.Tick-m.HeldSince_)).Add(u.Velocity)
 			tr := state.Trace(h.Position, h.Position.Add(h.Velocity.Unit()), h.Size, false)
-			collide := tr.Collide(u)
+			collide := tr.CollideFunc(func(o *Unit) bool {
+				return o != u && h.CollideWith(state, h, o)
+			})
 			if collide == nil && !tr.HitWorld {
 				m.Held_, m.HeldSince_ = 0, 0
 			}
@@ -398,7 +407,9 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 			}
 			lemon.Velocity = Scale(m.Target().Sub(u.Position).Add(Coord{0, u.Size.Y / 2}), LemonSpeed).Add(u.Velocity)
 			tr := state.Trace(lemon.Position, lemon.Position.Add(lemon.Velocity.Unit()), lemon.Size, false)
-			collide := tr.Collide(u)
+			collide := tr.CollideFunc(func(o *Unit) bool {
+				return lemon.CollideWith(state, lemon, o)
+			})
 			if collide == nil && !tr.HitWorld {
 				state.Units[state.NextUnit] = lemon
 				state.NextUnit++
@@ -420,6 +431,16 @@ func (m *VacuumMan) Mass(state *State, u *Unit) int64 {
 	}
 
 	return mass
+}
+
+func (*VacuumMan) CollideWith(state *State, u, o *Unit) bool {
+	if u == o {
+		return false
+	}
+	if _, ok := o.UnitData.(*Lemon); ok {
+		return false
+	}
+	return true
 }
 
 type Lemon struct {
@@ -446,6 +467,16 @@ func (*Lemon) Update(*State, *Unit) {}
 
 func (l *Lemon) UpdateDead(state *State, u *Unit) {
 	delete(state.Units, l.ID)
+}
+
+func (*Lemon) CollideWith(state *State, u, o *Unit) bool {
+	if _, ok := o.UnitData.(*Lemon); ok {
+		return false
+	}
+	if _, ok := o.UnitData.(*VacuumMan); ok {
+		return false
+	}
+	return true
 }
 
 type NormalMan struct {

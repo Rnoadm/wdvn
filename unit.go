@@ -21,6 +21,7 @@ type Unit struct {
 type UnitData interface {
 	Update(*State, *Unit)
 	UpdateDead(*State, *Unit)
+	CollideWith(state *State, u, o *Unit) bool
 	Sprite(*State, *Unit) *image.RGBA
 	Mass(*State, *Unit) int64
 	ShowDamage() bool
@@ -29,7 +30,9 @@ type UnitData interface {
 
 func (u *Unit) OnGround(state *State) (bool, SpecialTile) {
 	tr := state.Trace(u.Position, u.Position.Add(Coord{0, 1}), u.Size, false)
-	tr.Collide(u)
+	tr.CollideFunc(func(o *Unit) bool {
+		return u.CollideWith(state, u, o)
+	})
 	return tr.End == u.Position, tr.Special
 }
 
@@ -163,15 +166,21 @@ func (u *Unit) Update(state *State) {
 	}
 
 	tr := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, u.Velocity.Y / TicksPerSecond}), u.Size, false)
-	collide := tr.Collide(u)
+	collide := tr.CollideFunc(func(o *Unit) bool {
+		return u.CollideWith(state, u, o)
+	})
 	if u.Health > 0 && tr.End == u.Position && !u.Velocity.Zero() {
 		stuck := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, 0}), u.Size, false)
-		collide2 := stuck.Collide(u)
+		collide2 := stuck.CollideFunc(func(o *Unit) bool {
+			return u.CollideWith(state, u, o)
+		})
 		if stuck.End != tr.End {
 			tr, collide = stuck, collide2
 		} else {
 			stuck = state.Trace(u.Position, u.Position.Add(Coord{0, u.Velocity.Y / TicksPerSecond}), u.Size, false)
-			collide2 = stuck.Collide(u)
+			collide2 := stuck.CollideFunc(func(o *Unit) bool {
+				return u.CollideWith(state, u, o)
+			})
 			if stuck.End != tr.End {
 				tr, collide = stuck, collide2
 			}
