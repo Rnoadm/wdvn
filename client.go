@@ -390,6 +390,7 @@ var (
 	deadhaze      *image.Uniform
 	parallax      [2]*image.RGBA
 	lemonsprite   *image.RGBA
+	grubsprite    *image.RGBA
 )
 
 func graphicsInit() {
@@ -545,6 +546,13 @@ func graphicsInit() {
 		}
 		lemonsprite = image.NewRGBA(src.Bounds())
 		draw.Draw(lemonsprite, lemonsprite.Rect, src, lemonsprite.Rect.Min, draw.Src)
+
+		src, err = png.Decode(bytes.NewReader(res.GrubPng))
+		if err != nil {
+			panic(err)
+		}
+		grubsprite = image.NewRGBA(src.Bounds())
+		draw.Draw(grubsprite, grubsprite.Rect, src, grubsprite.Rect.Min, draw.Src)
 	})
 }
 
