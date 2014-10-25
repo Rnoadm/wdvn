@@ -82,6 +82,8 @@ func EncodeVideo(w io.Writer, r io.Reader) error {
 		}
 
 		for {
+			buf.Reset()
+
 			l, err := binary.ReadUvarint(br)
 			if err == io.EOF {
 				return
