@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"code.google.com/p/goprotobuf/proto"
-	"encoding/gob"
 	"github.com/BenLubar/bindiff"
 	"github.com/Rnoadm/wdvn/res"
 	"log"
@@ -32,6 +30,11 @@ func Listen(l net.Listener, world *World) {
 	go Manager(input, state, connection, broadcast, world)
 	go Accept(accept, l)
 
+	worldPacket := &res.Packet{
+		Type: Type_World,
+		Data: Encode(world),
+	}
+
 	for {
 		select {
 		case conn := <-accept:
@@ -40,7 +43,7 @@ func Listen(l net.Listener, world *World) {
 			connection <- true
 
 			quitWait.Add(1)
-			go Serve(conn, ch, broadcast, state, world, input, &connected, func() {
+			go Serve(conn, ch, broadcast, state, worldPacket, input, &connected, func() {
 				go func() {
 					for _ = range ch {
 						// discard
@@ -106,7 +109,7 @@ func Multicast(broadcast <-chan *res.Packet, register, unregister <-chan chan<- 
 	}
 }
 
-func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <-chan <-chan []byte, world *World, input chan<- *res.Packet, connected *[res.Man_count]uint64, disconnect func()) {
+func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <-chan <-chan []byte, world *res.Packet, input chan<- *res.Packet, connected *[res.Man_count]uint64, disconnect func()) {
 	defer disconnect()
 	defer conn.Close()
 
@@ -144,19 +147,7 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <
 	}
 
 	// send the world
-	{
-		var buf bytes.Buffer
-
-		err := gob.NewEncoder(&buf).Encode(world)
-		if err != nil {
-			panic(err)
-		}
-
-		write <- &res.Packet{
-			Type: Type_World,
-			Data: buf.Bytes(),
-		}
-	}
+	write <- world
 
 	// send full state to the client
 	write <- &res.Packet{
@@ -248,21 +239,7 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 	defer tick.Stop()
 
 	if replay != nil {
-		var buf bytes.Buffer
-		err := buf.WriteByte(0)
-		if err != nil {
-			panic(err)
-		}
-		err = gob.NewEncoder(&buf).Encode(world)
-		if err != nil {
-			panic(err)
-		}
-		err = gob.NewEncoder(&buf).Encode(state)
-		if err != nil {
-			panic(err)
-		}
-
-		replay <- buf.Bytes()
+		replay <- append(append([]byte{0}, Encode(world)...), Encode(state)...)
 	}
 
 	for {
@@ -287,28 +264,19 @@ func Manager(in <-chan *res.Packet, out chan<- <-chan []byte, connection <-chan 
 			}
 
 		case out <- ch:
-			var buf bytes.Buffer
-			err := gob.NewEncoder(&buf).Encode(state)
-			if err != nil {
-				panic(err)
-			}
-			ch <- buf.Bytes()
+			ch <- Encode(state)
 
 		case <-tick.C:
 			t := state.Tick
 
 			state.Update(&input)
 
-			var buf bytes.Buffer
-			err := gob.NewEncoder(&buf).Encode(state)
-			if err != nil {
-				panic(err)
-			}
-			diff := bindiff.Diff(prev, buf.Bytes(), 5)
+			cur := Encode(state)
+			diff := bindiff.Diff(prev, cur, 5)
 			if replay != nil {
 				replay <- append([]byte{1}, diff...)
 			}
-			prev = buf.Bytes()
+			prev = cur
 
 			go Send(broadcast, &res.Packet{
 				Type: Type_StateDiff,

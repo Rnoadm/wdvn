@@ -391,3 +391,14 @@ func LoadWorld(b []byte) (w *World) {
 	}
 	return
 }
+
+func Encode(v interface{}) []byte {
+	var buf bytes.Buffer
+
+	err := gob.NewEncoder(&buf).Encode(v)
+	if err != nil {
+		panic(err)
+	}
+
+	return buf.Bytes()
+}
