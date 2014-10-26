@@ -107,10 +107,14 @@ func Client(addr string) {
 			X: proto.Int64(int64(mouse.X)),
 			Y: proto.Int64(int64(mouse.Y)),
 		}
-
 	}
 
-	renderResize, renderMan, renderState, renderError := make(chan struct{}, 1), make(chan res.Man, 1), make(chan State, 1), make(chan error, 1)
+	var (
+		renderResize = make(chan struct{}, 1)
+		renderMan    = make(chan res.Man, 1)
+		renderState  = make(chan State, 1)
+		renderError  = make(chan error, 1)
+	)
 	go RenderThread(w, renderResize, renderMan, renderState, renderError)
 
 	for {
