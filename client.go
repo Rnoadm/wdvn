@@ -151,11 +151,7 @@ func Client(addr string) {
 				}
 
 			case res.Type_World:
-				world = new(World)
-				err := gob.NewDecoder(bytes.NewReader(p.GetData())).Decode(&world)
-				if err != nil {
-					panic(err)
-				}
+				world = LoadWorld(bytes.NewReader(p.GetData()))
 				if !noState {
 					state.world = world
 					for {
