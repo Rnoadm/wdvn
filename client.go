@@ -35,84 +35,20 @@ func Client(addr string) {
 
 	var (
 		me        res.Man
-		state     State
+		state     *State
 		lastState []byte
 		lastTick  uint64
 		input     = make(chan *res.Packet, 1)
 		noState   = true
 		world     *World
-		mouse     image.Point
 	)
+	go Input(write, input)
 	defer close(input)
-	go func() {
-		var p *res.Packet
-
-		for {
-			out := write
-			if p == nil {
-				out = nil
-			}
-
-			select {
-			case v, ok := <-input:
-				if !ok {
-					return
-				}
-
-				if p == nil {
-					p = &res.Packet{
-						Type: Type_Input,
-					}
-				}
-				if v == nil {
-					proto.Merge(p, ReleaseAll)
-				} else {
-					proto.Merge(p, v)
-				}
-
-			case out <- p:
-				p = nil
-			}
-		}
-	}()
-
-	sendMouse := func() {
-		width, height := w.Size()
-		if *flagSplitScreen {
-			width /= 2
-			height /= 2
-
-			var them res.Man
-			if mouse.Y >= height {
-				them |= 1
-			}
-			if mouse.X >= width {
-				them |= 2
-			}
-
-			if me&1 == 1 {
-				mouse.Y -= height
-			}
-			if me&2 == 2 {
-				mouse.X -= width
-			}
-
-			delta := state.Mans[them].Position.Sub(state.Mans[me].Position)
-			mouse.X += int(delta.X / PixelSize)
-			mouse.Y += int(delta.Y / PixelSize)
-		}
-		mouse.X -= width / 2
-		mouse.Y -= height / 2
-		input <- &res.Packet{
-			X: proto.Int64(int64(mouse.X)),
-			Y: proto.Int64(int64(mouse.Y)),
-		}
-	}
 
 	var (
 		renderResize = make(chan struct{}, 1)
 		renderMan    = make(chan res.Man, 1)
-		renderState  = make(chan State, 1)
+		renderState  = make(chan *State, 1)
 		renderError  = make(chan error, 1)
 	)
 	go RenderThread(w, renderResize, renderMan, renderState, renderError)
@@ -127,7 +63,7 @@ func Client(addr string) {
 			}
 
 			world = nil
-			state = State{}
+			state = nil
 			noState = true
 			for {
 				select {
@@ -173,10 +109,9 @@ func Client(addr string) {
 						var err error
 						lastState, err = bindiff.Forward(lastState, p.GetData())
 						if err == nil {
-							var newState State
-							err = gob.NewDecoder(bytes.NewReader(lastState)).Decode(&newState)
+							state = nil
+							err = gob.NewDecoder(bytes.NewReader(lastState)).Decode(&state)
 							if err == nil {
-								state = newState
 								state.world = world
 								lastTick = state.Tick
 								for {
@@ -199,7 +134,7 @@ func Client(addr string) {
 				}
 
 			case res.Type_FullState:
-				state = State{}
+				state = nil
 				err := gob.NewDecoder(bytes.NewReader(p.GetData())).Decode(&state)
 				if err != nil {
 					panic(err)
@@ -221,14 +156,16 @@ func Client(addr string) {
 				if err != nil {
 					panic(err)
 				}
-				state.world = world
-				for {
-					select {
-					case renderState <- state:
-					case <-renderState:
-						continue
+				if !noState {
+					state.world = world
+					for {
+						select {
+						case renderState <- state:
+						case <-renderState:
+							continue
+						}
+						break
 					}
-					break
 				}
 			}
 
@@ -309,8 +246,7 @@ func Client(addr string) {
 					}
 				}
 			case wde.MouseDownEvent:
-				mouse = e.Where
-				sendMouse()
+				input <- Mouse(w, state, me, e.Where)
 				switch e.Which {
 				case wde.LeftButton:
 					input <- &res.Packet{
@@ -323,8 +259,7 @@ func Client(addr string) {
 					}
 				}
 			case wde.MouseUpEvent:
-				mouse = e.Where
-				sendMouse()
+				input <- Mouse(w, state, me, e.Where)
 				switch e.Which {
 				case wde.LeftButton:
 					input <- &res.Packet{
@@ -341,11 +276,9 @@ func Client(addr string) {
 			case wde.MouseExitedEvent:
 				input <- nil
 			case wde.MouseMovedEvent:
-				mouse = e.Where
-				sendMouse()
+				input <- Mouse(w, state, me, e.Where)
 			case wde.MouseDraggedEvent:
-				mouse = e.Where
-				sendMouse()
+				input <- Mouse(w, state, me, e.Where)
 			default:
 				panic(fmt.Errorf("unexpected event type %T in %#v", event, event))
 			}
@@ -356,18 +289,18 @@ func Client(addr string) {
 	}
 }
 
-func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, state <-chan State, err <-chan error) {
+func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, state <-chan *State, err <-chan error) {
 	defer quitWait.Done()
 
 	img := image.NewRGBA(w.Screen().Bounds())
 	var m res.Man
-	var s State
+	var s *State
 	var e error
 	for {
 		if img.Rect != w.Screen().Bounds() {
 			img = image.NewRGBA(w.Screen().Bounds())
 		}
-		Render(img, m, &s, e)
+		Render(img, m, s, e)
 		w.Screen().CopyRGBA(img, img.Rect)
 		w.FlushImage(img.Rect)
 		select {
@@ -378,5 +311,70 @@ func RenderThread(w wde.Window, repaint <-chan struct{}, man <-chan res.Man, sta
 		case <-quitRequest:
 			return
 		}
+	}
+}
+
+func Input(write chan<- *res.Packet, input <-chan *res.Packet) {
+	var p *res.Packet
+
+	for {
+		out := write
+		if p == nil {
+			out = nil
+		}
+
+		select {
+		case v, ok := <-input:
+			if !ok {
+				return
+			}
+
+			if p == nil {
+				p = &res.Packet{
+					Type: Type_Input,
+				}
+			}
+			if v == nil {
+				proto.Merge(p, ReleaseAll)
+			} else {
+				proto.Merge(p, v)
+			}
+
+		case out <- p:
+			p = nil
+		}
+	}
+}
+
+func Mouse(w wde.Window, state *State, me res.Man, mouse image.Point) *res.Packet {
+	width, height := w.Size()
+	if *flagSplitScreen {
+		width /= 2
+		height /= 2
+
+		var them res.Man
+		if mouse.Y >= height {
+			them |= 1
+		}
+		if mouse.X >= width {
+			them |= 2
+		}
+
+		if me&1 == 1 {
+			mouse.Y -= height
+		}
+		if me&2 == 2 {
+			mouse.X -= width
+		}
+
+		delta := state.Mans[them].Position.Sub(state.Mans[me].Position)
+		mouse.X += int(delta.X / PixelSize)
+		mouse.Y += int(delta.Y / PixelSize)
+	}
+	mouse.X -= width / 2
+	mouse.Y -= height / 2
+	return &res.Packet{
+		X: proto.Int64(int64(mouse.X)),
+		Y: proto.Int64(int64(mouse.Y)),
 	}
 }

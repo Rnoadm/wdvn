@@ -19,7 +19,7 @@ func Render(img *image.RGBA, me res.Man, state *State, err error) {
 
 	draw.Draw(img, img.Rect, image.White, image.ZP, draw.Src)
 
-	if state.world == nil || state.Mans[0].UnitData == nil {
+	if state == nil || state.world == nil || state.Mans[0].UnitData == nil {
 		RenderText(img, "Connecting...", image.Pt(hx, hy), color.Black, color.White, true)
 
 		if err != nil {
