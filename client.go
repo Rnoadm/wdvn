@@ -25,28 +25,13 @@ func Client(addr string) {
 
 	graphicsInit()
 
-	read, write, errors := make(chan *res.Packet), make(chan *res.Packet), make(chan error, 2)
-	defer func() {
-		close(write)
-		for {
-			if read == nil && errors == nil {
-				return
-			}
-
-			select {
-			case _, ok := <-read:
-				if !ok {
-					read = nil
-				}
-
-			case _, ok := <-errors:
-				if !ok {
-					errors = nil
-				}
-			}
-		}
-	}()
+	var (
+		read   = make(chan *res.Packet)
+		write  = make(chan *res.Packet)
+		errors = make(chan error, 2)
+	)
 	go Reconnect(addr, read, write, errors)
+	defer Disconnect(read, write, errors)
 
 	var (
 		me        res.Man

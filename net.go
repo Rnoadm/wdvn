@@ -64,6 +64,27 @@ func Reconnect(addr string, read chan<- *res.Packet, write <-chan *res.Packet, e
 	}
 }
 
+func Disconnect(read <-chan *res.Packet, write chan<- *res.Packet, errors <-chan error) {
+	close(write)
+	for {
+		if read == nil && errors == nil {
+			return
+		}
+
+		select {
+		case _, ok := <-read:
+			if !ok {
+				read = nil
+			}
+
+		case _, ok := <-errors:
+			if !ok {
+				errors = nil
+			}
+		}
+	}
+}
+
 func makeSlice(l uint64) (b []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
