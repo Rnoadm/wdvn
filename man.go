@@ -24,8 +24,9 @@ func Lerp(min, max int64, tmin, tmax, t uint64) int64 {
 
 type Man interface {
 	UnitData
+	DoRespawn(*State, *Unit)
 	Man() res.Man
-	Lives() uint64
+	Lives() int64
 	Respawn() uint64
 	Target() Coord
 	Input(*res.Packet)
@@ -47,7 +48,7 @@ type ManUnitData struct {
 	Crouching_  bool
 	Input_      *res.Packet
 	Respawn_    uint64
-	Lives_      uint64
+	Lives_      int64
 	Checkpoint_ Coord
 }
 
@@ -55,18 +56,49 @@ func (m *ManUnitData) UpdateDead(state *State, u *Unit) {
 	if m.Respawn_ == 0 {
 		m.Respawn_ = state.Tick + RespawnTime
 	}
-	if m.Respawn_ <= state.Tick && m.Lives_ > 0 {
-		m.Lives_--
-		u.Health = ManHealth
-		u.Size = Coord{}
-		m.Crouching_ = false
-		u.Position = state.FindSpawnPosition(ManSize)
-		u.Size = ManSize
-		u.Gravity = 0
-		u.Velocity = Coord{}
-		u.Acceleration = Coord{}
-		m.Respawn_ = 0
+	if m.Respawn_ <= state.Tick {
+		if m.Lives_ > 0 {
+			m.DoRespawn(state, u)
+		} else if m.Man_ == res.Man_Whip {
+			allowRespawn := true
+			maxLives := m.Lives_
+			for i := range state.Mans {
+				uu := &state.Mans[i]
+				mm := uu.UnitData.(Man)
+				if mm.Respawn() == 0 || mm.Respawn() > state.Tick {
+					allowRespawn = false
+					break
+				}
+				if l := mm.Lives(); l > maxLives {
+					maxLives = l
+				}
+			}
+
+			if allowRespawn {
+				for i := range state.Mans {
+					uu := &state.Mans[i]
+					mm := uu.UnitData.(Man)
+
+					if mm.Lives() == maxLives {
+						mm.DoRespawn(state, uu)
+					}
+				}
+			}
+		}
 	}
+}
+
+func (m *ManUnitData) DoRespawn(state *State, u *Unit) {
+	m.Lives_--
+	u.Health = ManHealth
+	u.Size = Coord{}
+	m.Crouching_ = false
+	u.Position = state.FindSpawnPosition(ManSize)
+	u.Size = ManSize
+	u.Gravity = 0
+	u.Velocity = Coord{}
+	u.Acceleration = Coord{}
+	m.Respawn_ = 0
 }
 
 func (m *ManUnitData) Update(state *State, u *Unit) {
@@ -157,7 +189,7 @@ func (m *ManUnitData) Target() Coord {
 func (m *ManUnitData) Input(p *res.Packet) {
 	m.Input_ = p
 }
-func (m *ManUnitData) Lives() uint64 {
+func (m *ManUnitData) Lives() int64 {
 	return m.Lives_
 }
 func (m *ManUnitData) Checkpoint() *Coord {

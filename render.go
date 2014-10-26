@@ -69,8 +69,10 @@ func Render(img *image.RGBA, me res.Man, state *State, err error) {
 			lives = fmt.Sprintf("%d Mans", l)
 		} else if l == 1 {
 			lives = "1 Man!"
-		} else {
+		} else if l == 0 {
 			lives = "No Mans!!"
+		} else {
+			lives = fmt.Sprintf("%d Mans???", l)
 		}
 		RenderText(img, lives, image.Pt(x, y+14), color.White, mancolors[i], false)
 	}

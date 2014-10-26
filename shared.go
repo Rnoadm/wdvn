@@ -28,7 +28,7 @@ const (
 	WhipSpeedMin     = 200 * PixelSize
 	WhipSpeedMax     = 1500 * PixelSize
 	WhipDistance     = 10 * TileSize * PixelSize
-	ManLives         = 100
+	ManLives         = 10
 	ManHealth        = 10000
 	DamageFactor     = TileSize * PixelSize * 100 // momentum/DamageFactor is damage dealt
 	RespawnTime      = 2 * TicksPerSecond
