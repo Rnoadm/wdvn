@@ -14,6 +14,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"strings"
 	"sync"
 )
 
@@ -395,7 +396,7 @@ var (
 
 func graphicsInit() {
 	graphicsOnce.Do(func() {
-		font, err := truetype.Parse(res.LuxisrTtf)
+		font, err := truetype.Parse([]byte(res.LuxisrTtf))
 		if err != nil {
 			panic(err)
 		}
@@ -405,7 +406,7 @@ func graphicsInit() {
 			Style:  draw2d.FontStyleNormal,
 		}, font)
 
-		src, err := png.Decode(bytes.NewReader(res.MansPng))
+		src, err := png.Decode(strings.NewReader(res.MansPng))
 		if err != nil {
 			panic(err)
 		}
@@ -424,7 +425,7 @@ func graphicsInit() {
 			manfills[i] = image.NewUniform(mancolors[i])
 		}
 
-		src, err = png.Decode(bytes.NewReader(res.TerrainPng))
+		src, err = png.Decode(strings.NewReader(res.TerrainPng))
 		if err != nil {
 			panic(err)
 		}
@@ -437,7 +438,7 @@ func graphicsInit() {
 			terrain = append(terrain, dst.SubImage(image.Rect(x, dst.Rect.Min.Y, x+TileSize, dst.Rect.Max.Y)).(*image.RGBA))
 		}
 
-		src, err = png.Decode(bytes.NewReader(res.TileSidePng))
+		src, err = png.Decode(strings.NewReader(res.TileSidePng))
 		if err != nil {
 			panic(err)
 		}
@@ -446,7 +447,7 @@ func graphicsInit() {
 		if tileSide.Rect.Dy() != TileSize {
 			panic("tile size mismatch")
 		}
-		src, err = png.Decode(bytes.NewReader(res.TileCornerInnerPng))
+		src, err = png.Decode(strings.NewReader(res.TileCornerInnerPng))
 		if err != nil {
 			panic(err)
 		}
@@ -455,7 +456,7 @@ func graphicsInit() {
 		if tileCornerInner.Rect.Dx() != tileCornerInner.Rect.Dy() || tileSide.Rect.Dx() != tileCornerInner.Rect.Dx() {
 			panic("tile size mismatch")
 		}
-		src, err = png.Decode(bytes.NewReader(res.TileCornerOuterPng))
+		src, err = png.Decode(strings.NewReader(res.TileCornerOuterPng))
 		if err != nil {
 			panic(err)
 		}
@@ -526,28 +527,28 @@ func graphicsInit() {
 		offscreenfade = image.NewUniform(color.Alpha{0x40})
 		deadhaze = image.NewUniform(color.RGBA{64, 64, 64, 64})
 
-		src, err = png.Decode(bytes.NewReader(res.Parallax0Png))
+		src, err = png.Decode(strings.NewReader(res.Parallax0Png))
 		if err != nil {
 			panic(err)
 		}
 		parallax[0] = image.NewRGBA(src.Bounds())
 		draw.Draw(parallax[0], parallax[0].Rect, src, parallax[0].Rect.Min, draw.Src)
 
-		src, err = png.Decode(bytes.NewReader(res.Parallax1Png))
+		src, err = png.Decode(strings.NewReader(res.Parallax1Png))
 		if err != nil {
 			panic(err)
 		}
 		parallax[1] = image.NewRGBA(src.Bounds())
 		draw.Draw(parallax[1], parallax[1].Rect, src, parallax[1].Rect.Min, draw.Src)
 
-		src, err = png.Decode(bytes.NewReader(res.LemonPng))
+		src, err = png.Decode(strings.NewReader(res.LemonPng))
 		if err != nil {
 			panic(err)
 		}
 		lemonsprite = image.NewRGBA(src.Bounds())
 		draw.Draw(lemonsprite, lemonsprite.Rect, src, lemonsprite.Rect.Min, draw.Src)
 
-		src, err = png.Decode(bytes.NewReader(res.GrubPng))
+		src, err = png.Decode(strings.NewReader(res.GrubPng))
 		if err != nil {
 			panic(err)
 		}

@@ -5,9 +5,11 @@ import (
 	"encoding/gob"
 	"github.com/Rnoadm/wdvn/res"
 	"image/color"
+	"io"
 	"math"
 	"math/rand"
 	"sort"
+	"strings"
 )
 
 const (
@@ -382,10 +384,10 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 	return tr
 }
 
-var FooLevel = LoadWorld(res.FooLevel)
+var FooLevel = LoadWorld(strings.NewReader(res.FooLevel))
 
-func LoadWorld(b []byte) (w *World) {
-	err := gob.NewDecoder(bytes.NewReader(b)).Decode(&w)
+func LoadWorld(r io.Reader) (w *World) {
+	err := gob.NewDecoder(r).Decode(&w)
 	if err != nil {
 		panic(err)
 	}
