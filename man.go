@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"time"
 )
 
 func Scale(delta Coord, distance float64) Coord {
@@ -50,9 +51,11 @@ type ManUnitData struct {
 	Respawn_    uint64
 	Lives_      int64
 	Checkpoint_ Coord
+	Ping_       time.Duration
 }
 
 func (m *ManUnitData) UpdateDead(state *State, u *Unit) {
+	m.Ping_ = time.Duration(m.Input_.GetTick())
 	if m.Respawn_ == 0 {
 		m.Respawn_ = state.Tick + RespawnTime
 	}
@@ -102,6 +105,8 @@ func (m *ManUnitData) DoRespawn(state *State, u *Unit) {
 }
 
 func (m *ManUnitData) Update(state *State, u *Unit) {
+	m.Ping_ = time.Duration(m.Input_.GetTick())
+
 	onGround, _ := u.OnGround(state)
 
 	if m.Input_.GetKeyLeft() == res.Button_pressed {

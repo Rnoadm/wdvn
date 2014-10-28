@@ -74,6 +74,7 @@ var (
 	Button_pressed  = res.Button_pressed.Enum()
 
 	ReleaseAll = &res.Packet{
+		Tick:     new(uint64),
 		Mouse1:   Button_released,
 		Mouse2:   Button_released,
 		KeyUp:    Button_released,

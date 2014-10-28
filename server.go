@@ -133,7 +133,14 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <
 	pman := man.Enum()
 	// leave the character when we disconnect
 	defer func() {
+		release := &res.Packet{Type: Type_Input}
+		proto.Merge(release, ReleaseAll)
+		release.Man = pman
+
+		go Send(input, release)
+
 		atomic.AddUint64(&(*connected)[man], ^uint64(0))
+
 	}()
 
 	inputCache := new(res.Packet)
@@ -174,6 +181,18 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <
 
 			switch p.GetType() {
 			case res.Type_Ping:
+				var t time.Time
+				err := t.GobDecode(p.GetData())
+				if err != nil {
+					log.Println("failed to decode ping packet:", err)
+					return
+				}
+				inputCache.Tick = proto.Uint64(uint64(time.Since(t)))
+				go Send(input, &res.Packet{
+					Type: Type_Input,
+					Man:  pman,
+					Tick: inputCache.Tick,
+				})
 				lastPing = time.Now()
 
 			case res.Type_SelectMan:
@@ -196,6 +215,8 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <
 
 			case res.Type_Input:
 				p.Man = pman
+				p.Data = nil
+				p.Tick = nil
 				go Send(input, p)
 				proto.Merge(inputCache, p)
 
@@ -209,8 +230,13 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <
 			}
 
 		case <-ping.C:
+			b, err := time.Now().GobEncode()
+			if err != nil {
+				panic(err)
+			}
 			go Send(out, &res.Packet{
 				Type: Type_Ping,
+				Data: b,
 			})
 
 			if time.Since(lastPing) > time.Second*5 {
