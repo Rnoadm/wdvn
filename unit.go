@@ -31,9 +31,8 @@ type UnitData interface {
 
 func (u *Unit) OnGround(state *State) (bool, SpecialTile) {
 	tr := state.Trace(u.Position, u.Position.Add(Coord{0, 1}), u.Size(state, u), false)
-	tr.CollideFunc(func(o *Unit) bool {
-		return u.CollideWith(state, u, o)
-	})
+	tr.CollideWith(state, u)
+
 	return tr.End == u.Position, tr.Special
 }
 
@@ -163,21 +162,18 @@ func (u *Unit) Update(state *State) {
 	}
 
 	tr := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, u.Velocity.Y / TicksPerSecond}), u.Size(state, u), false)
-	collide := tr.CollideFunc(func(o *Unit) bool {
-		return u.CollideWith(state, u, o)
-	})
+	collide := tr.CollideWith(state, u)
+
 	if u.Health > 0 && tr.End == u.Position && !u.Velocity.Zero() {
 		stuck := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, 0}), u.Size(state, u), false)
-		collide2 := stuck.CollideFunc(func(o *Unit) bool {
-			return u.CollideWith(state, u, o)
-		})
+		collide2 := stuck.CollideWith(state, u)
+
 		if stuck.End != tr.End {
 			tr, collide = stuck, collide2
 		} else {
 			stuck = state.Trace(u.Position, u.Position.Add(Coord{0, u.Velocity.Y / TicksPerSecond}), u.Size(state, u), false)
-			collide2 := stuck.CollideFunc(func(o *Unit) bool {
-				return u.CollideWith(state, u, o)
-			})
+			collide2 := stuck.CollideWith(state, u)
+
 			if stuck.End != tr.End {
 				tr, collide = stuck, collide2
 			}

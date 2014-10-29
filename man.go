@@ -233,9 +233,7 @@ func (m *ManUnitData) Update(state *State, u *Unit) {
 	} else {
 		if m.Crouching() {
 			tr := state.Trace(u.Position, u.Position.Sub(ManData[m.Man()].Size.Sub(ManData[m.Man()].SizeCrouch)), u.Size(state, u), false)
-			collide := tr.CollideFunc(func(o *Unit) bool {
-				return m.CollideWith(state, u, o)
-			})
+			collide := tr.CollideWith(state, u)
 			if collide == nil && !tr.HitWorld {
 				m.Crouching_ = false
 			}
@@ -502,9 +500,7 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 		start := u.Position.Sub(Coord{0, u.Size(state, u).Y / 2})
 		delta := Scale(m.Target().Sub(start), VacuumDistance)
 		tr := state.Trace(start, start.Add(delta), Coord{1, 1}, false)
-		if collide := tr.CollideFunc(func(o *Unit) bool {
-			return m.CollideWith(state, u, o)
-		}); collide != nil {
+		if collide := tr.CollideWith(state, u); collide != nil {
 			if m.Held_ == 0 {
 				if collide.Position.Sub(Coord{0, collide.Size(state, collide).Y / 2}).Sub(start).LengthSquared() < (u.Size(state, collide).X+collide.Size(state, collide).X)*(u.Size(state, u).X+collide.Size(state, collide).X) {
 					for i := range state.Mans {
@@ -562,9 +558,8 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 			}
 			lemon.Velocity = Scale(m.Target().Sub(u.Position).Add(Coord{0, u.Size(state, u).Y / 2}), LemonSpeed).Add(u.Velocity)
 			tr := state.Trace(lemon.Position, lemon.Position.Add(lemon.Velocity.Unit()), lemon.Size(state, lemon), false)
-			collide := tr.CollideFunc(func(o *Unit) bool {
-				return lemon.CollideWith(state, lemon, o)
-			})
+			collide := tr.CollideWith(state, lemon)
+
 			if collide == nil && !tr.HitWorld {
 				state.Units[state.NextUnit] = lemon
 				state.NextUnit++

@@ -230,6 +230,12 @@ func (t *Trace) Collide(ignore ...*Unit) *Unit {
 	})
 }
 
+func (t *Trace) CollideWith(state *State, u *Unit) *Unit {
+	return t.CollideFunc(func(o *Unit) bool {
+		return u.CollideWith(state, u, o)
+	})
+}
+
 func (t *Trace) CollideFunc(f func(*Unit) bool) *Unit {
 	for i := range t.Units {
 		if f(t.Units[i].Unit) {
