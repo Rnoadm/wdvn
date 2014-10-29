@@ -9,6 +9,85 @@ import (
 	"time"
 )
 
+type manData struct {
+	MoveSpeed          int64
+	MoveSpeedCrouch    int64
+	MoveSpeedAir       int64
+	MoveSpeedAirCrouch int64
+	JumpSpeed          int64
+	Size               Coord
+	SizeCrouch         Coord
+	MaxHealth          int64
+	Mass               int64
+	MassCrouch         int64
+	Gravity            int64
+	GravityCrouch      int64
+	Color              color.RGBA
+}
+
+var ManData [res.Man_count]manData = [...]manData{
+	res.Man_Whip: {
+		MoveSpeed:          2 * PixelSize,
+		MoveSpeedCrouch:    1 * PixelSize,
+		MoveSpeedAir:       2 * PixelSize,
+		MoveSpeedAirCrouch: 1 * PixelSize,
+		JumpSpeed:          350 * PixelSize,
+		Size:               Coord{30 * PixelSize, 46 * PixelSize},
+		SizeCrouch:         Coord{30 * PixelSize, 30 * PixelSize},
+		MaxHealth:          10000,
+		Mass:               1000,
+		MassCrouch:         2000,
+		Gravity:            Gravity,
+		GravityCrouch:      2 * Gravity,
+		Color:              color.RGBA{192, 0, 0, 255},
+	},
+	res.Man_Density: {
+		MoveSpeed:          2 * PixelSize,
+		MoveSpeedCrouch:    1 * PixelSize,
+		MoveSpeedAir:       2 * PixelSize,
+		MoveSpeedAirCrouch: 1 * PixelSize,
+		JumpSpeed:          350 * PixelSize,
+		Size:               Coord{30 * PixelSize, 46 * PixelSize},
+		SizeCrouch:         Coord{30 * PixelSize, 30 * PixelSize},
+		MaxHealth:          10000,
+		Mass:               1000,
+		MassCrouch:         2000,
+		Gravity:            Gravity,
+		GravityCrouch:      2 * Gravity,
+		Color:              color.RGBA{128, 128, 0, 255},
+	},
+	res.Man_Vacuum: {
+		MoveSpeed:          2 * PixelSize,
+		MoveSpeedCrouch:    1 * PixelSize,
+		MoveSpeedAir:       2 * PixelSize,
+		MoveSpeedAirCrouch: 1 * PixelSize,
+		JumpSpeed:          350 * PixelSize,
+		Size:               Coord{30 * PixelSize, 46 * PixelSize},
+		SizeCrouch:         Coord{30 * PixelSize, 30 * PixelSize},
+		MaxHealth:          10000,
+		Mass:               1000,
+		MassCrouch:         2000,
+		Gravity:            Gravity,
+		GravityCrouch:      2 * Gravity,
+		Color:              color.RGBA{0, 128, 0, 255},
+	},
+	res.Man_Normal: {
+		MoveSpeed:          2 * PixelSize,
+		MoveSpeedCrouch:    1 * PixelSize,
+		MoveSpeedAir:       0,
+		MoveSpeedAirCrouch: 0,
+		JumpSpeed:          200 * PixelSize,
+		Size:               Coord{30 * PixelSize, 46 * PixelSize},
+		SizeCrouch:         Coord{30 * PixelSize, 30 * PixelSize},
+		MaxHealth:          10000,
+		Mass:               1000,
+		MassCrouch:         2000,
+		Gravity:            Gravity,
+		GravityCrouch:      2 * Gravity,
+		Color:              color.RGBA{0, 0, 192, 255},
+	},
+}
+
 func Scale(delta Coord, distance float64) Coord {
 	if delta.Zero() {
 		return delta
@@ -94,14 +173,11 @@ func (m *ManUnitData) UpdateDead(state *State, u *Unit) {
 
 func (m *ManUnitData) DoRespawn(state *State, u *Unit) {
 	m.Lives_--
-	u.Health = ManHealth
-	u.Size = Coord{}
+	u.Health = u.MaxHealth(state, u)
 	m.Crouching_ = false
-	u.Position = state.FindSpawnPosition(ManSize)
-	u.Size = ManSize
-	u.Gravity = 0
-	u.Velocity = Coord{}
 	u.Acceleration = Coord{}
+	u.Velocity = Coord{}
+	state.FindSpawnPosition(u)
 	m.Respawn_ = 0
 }
 
@@ -114,50 +190,59 @@ func (m *ManUnitData) Update(state *State, u *Unit) {
 		if m.Input_.GetKeyRight() == res.Button_pressed {
 			u.Acceleration.X = 0
 		} else {
-			if u.Size == CrouchSize {
-				u.Acceleration.X = -1 * PixelSize
+			if onGround {
+				if m.Crouching() {
+					u.Acceleration.X = -ManData[m.Man()].MoveSpeedCrouch
+				} else {
+					u.Acceleration.X = -ManData[m.Man()].MoveSpeed
+				}
 			} else {
-				u.Acceleration.X = -2 * PixelSize
+				if m.Crouching() {
+					u.Acceleration.X = -ManData[m.Man()].MoveSpeedAirCrouch
+				} else {
+					u.Acceleration.X = -ManData[m.Man()].MoveSpeedAir
+				}
 			}
 		}
 	} else {
 		if m.Input_.GetKeyRight() == res.Button_pressed {
-			if u.Size == CrouchSize {
-				u.Acceleration.X = 1 * PixelSize
+			if onGround {
+				if m.Crouching() {
+					u.Acceleration.X = ManData[m.Man()].MoveSpeedCrouch
+				} else {
+					u.Acceleration.X = ManData[m.Man()].MoveSpeed
+				}
 			} else {
-				u.Acceleration.X = 2 * PixelSize
+				if m.Crouching() {
+					u.Acceleration.X = ManData[m.Man()].MoveSpeedAirCrouch
+				} else {
+					u.Acceleration.X = ManData[m.Man()].MoveSpeedAir
+				}
 			}
 		} else {
 			u.Acceleration.X = 0
 		}
 	}
 	if m.Input_.GetKeyDown() == res.Button_pressed {
-		if !m.Crouching_ {
-			u.Position = u.Position.Sub(ManSize.Sub(CrouchSize))
-			u.Size = CrouchSize
+		if !m.Crouching() {
+			offset := u.Size(state, u)
 			m.Crouching_ = true
+			offset = offset.Sub(u.Size(state, u))
+			u.Position = u.Position.Sub(offset)
 		}
 	} else {
-		if m.Crouching_ {
-			tr := state.Trace(u.Position, u.Position.Sub(ManSize.Sub(CrouchSize)), CrouchSize, false)
+		if m.Crouching() {
+			tr := state.Trace(u.Position, u.Position.Sub(ManData[m.Man()].Size.Sub(ManData[m.Man()].SizeCrouch)), u.Size(state, u), false)
 			collide := tr.CollideFunc(func(o *Unit) bool {
 				return m.CollideWith(state, u, o)
 			})
 			if collide == nil && !tr.HitWorld {
-				u.Size = ManSize
 				m.Crouching_ = false
 			}
 		}
 	}
-	if !onGround && m.Man() == res.Man_Normal {
-		u.Acceleration.X = 0
-	}
 	if onGround && u.Velocity.Y == 0 && m.Input_.GetKeyUp() == res.Button_pressed {
-		if m.Man() == res.Man_Normal {
-			u.Acceleration.Y = -200 * PixelSize
-		} else {
-			u.Acceleration.Y = -350 * PixelSize
-		}
+		u.Acceleration.Y = -ManData[m.Man()].JumpSpeed
 	} else {
 		u.Acceleration.Y = 0
 	}
@@ -165,17 +250,25 @@ func (m *ManUnitData) Update(state *State, u *Unit) {
 	m.Target_.X = u.Position.X + m.Input_.GetX()*PixelSize
 	m.Target_.Y = u.Position.Y + m.Input_.GetY()*PixelSize
 }
-func (m *ManUnitData) Color() color.RGBA {
-	return mancolors[m.Man()]
+func (m *ManUnitData) Color(state *State, u *Unit) color.RGBA {
+	return ManData[m.Man()].Color
 }
-func (m *ManUnitData) ShowDamage() bool {
+func (m *ManUnitData) ShowDamage(state *State, u *Unit) bool {
 	return true
 }
 func (m *ManUnitData) Mass(state *State, u *Unit) int64 {
-	if m.Crouching_ {
-		return 2000
+	if m.Crouching() {
+		return ManData[m.Man()].MassCrouch
+	} else {
+		return ManData[m.Man()].Mass
 	}
-	return 1000
+}
+func (m *ManUnitData) Gravity(state *State, u *Unit) int64 {
+	if m.Crouching() {
+		return ManData[m.Man()].GravityCrouch
+	} else {
+		return ManData[m.Man()].Gravity
+	}
 }
 func (m *ManUnitData) Man() res.Man {
 	return m.Man_
@@ -210,6 +303,16 @@ func (m *ManUnitData) CollideWith(state *State, u, o *Unit) bool {
 func (m *ManUnitData) Ping() time.Duration {
 	return m.Ping_
 }
+func (m *ManUnitData) MaxHealth(state *State, u *Unit) int64 {
+	return ManData[m.Man()].MaxHealth
+}
+func (m *ManUnitData) Size(state *State, u *Unit) Coord {
+	if m.Crouching() {
+		return ManData[m.Man()].SizeCrouch
+	} else {
+		return ManData[m.Man()].Size
+	}
+}
 
 type WhipMan struct {
 	ManUnitData
@@ -229,7 +332,6 @@ func (m *WhipMan) UpdateDead(state *State, u *Unit) {
 	m.WhipEnd = Coord{}
 	m.WhipTether = Coord{}
 	m.WhipPull = false
-	u.Gravity = 0
 }
 
 func (m *WhipMan) Update(state *State, u *Unit) {
@@ -241,11 +343,6 @@ func (m *WhipMan) Update(state *State, u *Unit) {
 	if !m.WhipTether.Zero() {
 		if u.Position.Sub(m.WhipTether).LengthSquared() < WhipDistance*WhipDistance {
 			if ok, _ := u.OnGround(state); !ok {
-				if u.Position.Y > m.WhipTether.Y {
-					u.Gravity = -Gravity * 9 / 10
-				} else {
-					u.Gravity = 0
-				}
 				if u.Velocity.LengthSquared() > TileSize*PixelSize*TileSize*PixelSize {
 					u.Velocity.X = u.Velocity.X * 19 / 20
 					u.Velocity.Y = u.Velocity.Y * 19 / 20
@@ -256,7 +353,6 @@ func (m *WhipMan) Update(state *State, u *Unit) {
 				u.Acceleration.Y /= 4
 			}
 		} else if m.WhipStop == 0 {
-			u.Gravity = 0
 			m.WhipTether = Coord{}
 		}
 	}
@@ -274,7 +370,7 @@ func (m *WhipMan) Update(state *State, u *Unit) {
 				m.WhipStart = m.WhipStop - WhipTimeMax
 			}
 
-			u.Gravity, m.WhipTether = 0, Coord{}
+			m.WhipTether = Coord{}
 			velocity, whipEnd, hurt, collide, hitWorld := m.Whip(state, u)
 			m.WhipEnd = whipEnd
 			collide.Hurt(state, u, hurt)
@@ -291,6 +387,20 @@ func (m *WhipMan) Update(state *State, u *Unit) {
 	}
 }
 
+func (m *WhipMan) Gravity(state *State, u *Unit) int64 {
+	g := m.ManUnitData.Gravity(state, u)
+
+	if !m.WhipTether.Zero() && u.Position.Sub(m.WhipTether).LengthSquared() < WhipDistance*WhipDistance {
+		if ok, _ := u.OnGround(state); !ok {
+			if u.Position.Y > m.WhipTether.Y {
+				g -= Gravity * 9 / 10
+			}
+		}
+	}
+
+	return g
+}
+
 func (m *WhipMan) Whip(state *State, u *Unit) (velocity, whipEnd Coord, hurt int64, collide *Unit, hitWorld bool) {
 	if m.WhipStart == 0 {
 		return
@@ -304,7 +414,7 @@ func (m *WhipMan) Whip(state *State, u *Unit) (velocity, whipEnd Coord, hurt int
 	}
 
 	start := u.Position
-	start.Y -= u.Size.Y / 2
+	start.Y -= u.Size(state, u).Y / 2
 	delta := m.Target().Sub(start)
 	stop := start.Add(Scale(delta, WhipDistance))
 
@@ -326,30 +436,35 @@ func (m *WhipMan) Whip(state *State, u *Unit) (velocity, whipEnd Coord, hurt int
 
 type DensityMan struct {
 	ManUnitData
+	Gravity_ int64
 }
 
 func (m *DensityMan) Update(state *State, u *Unit) {
 	m.ManUnitData.Update(state, u)
 
-	u.Acceleration.X -= u.Acceleration.X * u.Gravity / Gravity / 5
+	u.Acceleration.X -= u.Acceleration.X * m.Gravity_ / Gravity / 5
 
 	if m.Input_.GetMouse1() == res.Button_pressed {
-		u.Gravity += 10
+		m.Gravity_ += 10
 	}
 	if m.Input_.GetMouse2() == res.Button_pressed {
-		u.Gravity -= 10
+		m.Gravity_ -= 10
 	}
-	if u.Gravity < -Gravity {
-		u.Gravity = -Gravity
+	if m.Gravity_ < -Gravity {
+		m.Gravity_ = -Gravity
 	}
-	if u.Gravity > Gravity*4 {
-		u.Gravity = Gravity * 4
+	if m.Gravity_ > Gravity*4 {
+		m.Gravity_ = Gravity * 4
 	}
+}
+
+func (m *DensityMan) Gravity(state *State, u *Unit) int64 {
+	return m.Gravity_ + Gravity
 }
 
 func (m *DensityMan) Mass(state *State, u *Unit) int64 {
 	mass := m.ManUnitData.Mass(state, u)
-	return mass + mass*u.Gravity/Gravity
+	return mass + mass*m.Gravity_/Gravity
 }
 
 type VacuumMan struct {
@@ -384,14 +499,14 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 	m.ManUnitData.Update(state, u)
 
 	if m.Input_.GetMouse2() == res.Button_pressed {
-		start := u.Position.Sub(Coord{0, u.Size.Y / 2})
+		start := u.Position.Sub(Coord{0, u.Size(state, u).Y / 2})
 		delta := Scale(m.Target().Sub(start), VacuumDistance)
 		tr := state.Trace(start, start.Add(delta), Coord{1, 1}, false)
 		if collide := tr.CollideFunc(func(o *Unit) bool {
 			return m.CollideWith(state, u, o)
 		}); collide != nil {
 			if m.Held_ == 0 {
-				if collide.Position.Sub(Coord{0, collide.Size.Y / 2}).Sub(start).LengthSquared() < (u.Size.X+collide.Size.X)*(u.Size.X+collide.Size.X) {
+				if collide.Position.Sub(Coord{0, collide.Size(state, collide).Y / 2}).Sub(start).LengthSquared() < (u.Size(state, collide).X+collide.Size(state, collide).X)*(u.Size(state, u).X+collide.Size(state, collide).X) {
 					for i := range state.Mans {
 						if collide == &state.Mans[i] {
 							m.Held_ = uint64(i) + 1
@@ -417,12 +532,12 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 			h.Position = u.Position
 			h.Position.Y--
 			if m.Target().X > u.Position.X {
-				h.Position.X += u.Size.X/2 + h.Size.X/2 + PixelSize
+				h.Position.X += u.Size(state, u).X/2 + h.Size(state, h).X/2 + PixelSize
 			} else {
-				h.Position.X -= u.Size.X/2 + h.Size.X/2 + PixelSize
+				h.Position.X -= u.Size(state, u).X/2 + h.Size(state, h).X/2 + PixelSize
 			}
-			h.Velocity = Scale(m.Target().Sub(u.Position).Add(Coord{0, u.Size.Y / 2}), VacuumSpeed*float64(state.Tick-m.HeldSince_)).Add(u.Velocity)
-			tr := state.Trace(h.Position, h.Position.Add(h.Velocity.Unit()), h.Size, false)
+			h.Velocity = Scale(m.Target().Sub(u.Position).Add(Coord{0, u.Size(state, u).Y / 2}), VacuumSpeed*float64(state.Tick-m.HeldSince_)).Add(u.Velocity)
+			tr := state.Trace(h.Position, h.Position.Add(h.Velocity.Unit()), h.Size(state, h), false)
 			collide := tr.CollideFunc(func(o *Unit) bool {
 				return o != u && h.CollideWith(state, h, o)
 			})
@@ -435,19 +550,18 @@ func (m *VacuumMan) Update(state *State, u *Unit) {
 	} else if m.Input_.GetMouse1() == res.Button_pressed {
 		if state.Tick-m.LastLemon_ > LemonTime {
 			lemon := &Unit{
-				Size:     LemonSize,
 				Health:   1,
 				UnitData: &Lemon{state.NextUnit},
 			}
 			lemon.Position = u.Position
-			lemon.Position.Y -= u.Size.Y / 2
+			lemon.Position.Y -= u.Size(state, u).Y / 2
 			if m.Target().X > u.Position.X {
-				lemon.Position.X += u.Size.X/2 + LemonSize.X/2 + PixelSize
+				lemon.Position.X += u.Size(state, u).X/2 + (*Lemon).Size(nil, nil, nil).X/2 + PixelSize
 			} else {
-				lemon.Position.X -= u.Size.X/2 + LemonSize.X/2 + PixelSize
+				lemon.Position.X -= u.Size(state, u).X/2 + (*Lemon).Size(nil, nil, nil).X/2 + PixelSize
 			}
-			lemon.Velocity = Scale(m.Target().Sub(u.Position).Add(Coord{0, u.Size.Y / 2}), LemonSpeed).Add(u.Velocity)
-			tr := state.Trace(lemon.Position, lemon.Position.Add(lemon.Velocity.Unit()), lemon.Size, false)
+			lemon.Velocity = Scale(m.Target().Sub(u.Position).Add(Coord{0, u.Size(state, u).Y / 2}), LemonSpeed).Add(u.Velocity)
+			tr := state.Trace(lemon.Position, lemon.Position.Add(lemon.Velocity.Unit()), lemon.Size(state, lemon), false)
 			collide := tr.CollideFunc(func(o *Unit) bool {
 				return lemon.CollideWith(state, lemon, o)
 			})
@@ -488,11 +602,11 @@ type Lemon struct {
 	ID uint64
 }
 
-func (*Lemon) Color() color.RGBA {
-	return mancolors[res.Man_Vacuum]
+func (*Lemon) Color(*State, *Unit) color.RGBA {
+	return ManData[res.Man_Vacuum].Color
 }
 
-func (*Lemon) ShowDamage() bool {
+func (*Lemon) ShowDamage(*State, *Unit) bool {
 	return false
 }
 
@@ -500,8 +614,20 @@ func (*Lemon) Mass(*State, *Unit) int64 {
 	return 50
 }
 
+func (*Lemon) Gravity(*State, *Unit) int64 {
+	return Gravity
+}
+
 func (*Lemon) Sprite(*State, *Unit) *image.RGBA {
 	return lemonsprite
+}
+
+func (*Lemon) MaxHealth(*State, *Unit) int64 {
+	return 1
+}
+
+func (*Lemon) Size(*State, *Unit) Coord {
+	return Coord{16 * PixelSize, 16 * PixelSize}
 }
 
 func (*Lemon) Update(*State, *Unit) {}

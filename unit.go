@@ -12,8 +12,6 @@ type Unit struct {
 	Position     Coord
 	Velocity     Coord
 	Acceleration Coord
-	Size         Coord
-	Gravity      int64
 	Health       int64
 	UnitData
 }
@@ -24,12 +22,15 @@ type UnitData interface {
 	CollideWith(state *State, u, o *Unit) bool
 	Sprite(*State, *Unit) *image.RGBA
 	Mass(*State, *Unit) int64
-	ShowDamage() bool
-	Color() color.RGBA
+	Gravity(*State, *Unit) int64
+	Size(*State, *Unit) Coord
+	MaxHealth(*State, *Unit) int64
+	ShowDamage(*State, *Unit) bool
+	Color(*State, *Unit) color.RGBA
 }
 
 func (u *Unit) OnGround(state *State) (bool, SpecialTile) {
-	tr := state.Trace(u.Position, u.Position.Add(Coord{0, 1}), u.Size, false)
+	tr := state.Trace(u.Position, u.Position.Add(Coord{0, 1}), u.Size(state, u), false)
 	tr.CollideFunc(func(o *Unit) bool {
 		return u.CollideWith(state, u, o)
 	})
@@ -40,17 +41,17 @@ func (u *Unit) Hurt(state *State, by *Unit, amount int64) {
 	if amount <= 0 || u.Health <= 0 {
 		return
 	}
-	if u.ShowDamage() {
+	if u.ShowDamage(state, u) {
 		c := color.RGBA{96, 96, 96, 255}
 		if by != nil {
-			c = by.Color()
+			c = by.Color(state, by)
 		}
 		state.Floaters = append(state.Floaters, Floater{
 			S:  humanize.Comma(amount),
-			Fg: u.Color(),
+			Fg: u.Color(state, u),
 			Bg: c,
-			X:  u.Position.X - u.Size.X/2 + rand.Int63n(u.Size.X),
-			Y:  u.Position.Y - rand.Int63n(u.Size.Y),
+			X:  u.Position.X - u.Size(state, u).X/2 + rand.Int63n(u.Size(state, u).X),
+			Y:  u.Position.Y - rand.Int63n(u.Size(state, u).Y),
 			T:  state.Tick,
 		})
 	}
@@ -71,7 +72,6 @@ func (u *Unit) Update(state *State) {
 	} else {
 		u.UnitData.UpdateDead(state, u)
 		u.Acceleration = Coord{}
-		u.Gravity = 0
 	}
 
 	onGround, special := u.OnGround(state)
@@ -86,10 +86,7 @@ func (u *Unit) Update(state *State) {
 	u.Velocity.X += u.Acceleration.X
 	u.Velocity.Y += u.Acceleration.Y
 	if !onGround {
-		u.Velocity.Y += Gravity + u.Gravity
-		if m, ok := u.UnitData.(Man); ok && m.Crouching() {
-			u.Velocity.Y += Gravity + u.Gravity
-		}
+		u.Velocity.Y += u.Gravity(state, u)
 	}
 
 	if u.Velocity.X > TerminalVelocity {
@@ -152,7 +149,7 @@ func (u *Unit) Update(state *State) {
 					state.Floaters = append(state.Floaters, Floater{
 						S:  text,
 						Fg: color.RGBA{255, 255, 255, 255},
-						Bg: u.Color(),
+						Bg: u.Color(state, u),
 						X:  pos.X,
 						Y:  pos.Y,
 						T:  state.Tick,
@@ -165,19 +162,19 @@ func (u *Unit) Update(state *State) {
 		}
 	}
 
-	tr := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, u.Velocity.Y / TicksPerSecond}), u.Size, false)
+	tr := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, u.Velocity.Y / TicksPerSecond}), u.Size(state, u), false)
 	collide := tr.CollideFunc(func(o *Unit) bool {
 		return u.CollideWith(state, u, o)
 	})
 	if u.Health > 0 && tr.End == u.Position && !u.Velocity.Zero() {
-		stuck := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, 0}), u.Size, false)
+		stuck := state.Trace(u.Position, u.Position.Add(Coord{u.Velocity.X / TicksPerSecond, 0}), u.Size(state, u), false)
 		collide2 := stuck.CollideFunc(func(o *Unit) bool {
 			return u.CollideWith(state, u, o)
 		})
 		if stuck.End != tr.End {
 			tr, collide = stuck, collide2
 		} else {
-			stuck = state.Trace(u.Position, u.Position.Add(Coord{0, u.Velocity.Y / TicksPerSecond}), u.Size, false)
+			stuck = state.Trace(u.Position, u.Position.Add(Coord{0, u.Velocity.Y / TicksPerSecond}), u.Size(state, u), false)
 			collide2 := stuck.CollideFunc(func(o *Unit) bool {
 				return u.CollideWith(state, u, o)
 			})
@@ -193,7 +190,7 @@ func (u *Unit) Update(state *State) {
 		if delta.Zero() {
 			delta.X += rand.Int63n(PixelSize*2+1) - PixelSize
 		}
-		stuck := state.Trace(u.Position, u.Position.Add(delta), u.Size, true)
+		stuck := state.Trace(u.Position, u.Position.Add(delta), u.Size(state, u), true)
 		tr.End = stuck.End
 	}
 	if collide == nil && tr.HitWorld {

@@ -52,12 +52,6 @@ const (
 )
 
 var (
-	ManSize    = Coord{30 * PixelSize, 46 * PixelSize}
-	CrouchSize = Coord{30 * PixelSize, 30 * PixelSize}
-	LemonSize  = Coord{16 * PixelSize, 16 * PixelSize}
-)
-
-var (
 	Type_Ping      = res.Type_Ping.Enum()
 	Type_SelectMan = res.Type_SelectMan.Enum()
 	Type_Input     = res.Type_Input.Enum()
@@ -98,11 +92,6 @@ type State struct {
 func NewState(world *World) *State {
 	var state State
 	state.world = world
-	for i := range state.Mans {
-		state.Mans[i].Position = state.FindSpawnPosition(ManSize)
-		state.Mans[i].Size = ManSize
-		state.Mans[i].Health = ManHealth
-	}
 	state.Mans[res.Man_Whip].UnitData = &WhipMan{
 		ManUnitData: ManUnitData{
 			Man_:        res.Man_Whip,
@@ -131,6 +120,10 @@ func NewState(world *World) *State {
 			Checkpoint_: state.SpawnPoint,
 		},
 	}
+	for i := range state.Mans {
+		state.Mans[i].Health = state.Mans[i].MaxHealth(&state, &state.Mans[i])
+		state.FindSpawnPosition(&state.Mans[i])
+	}
 	state.Units = make(map[uint64]*Unit)
 	return &state
 }
@@ -142,33 +135,35 @@ type Floater struct {
 	T      uint64
 }
 
-func (state *State) FindSpawnPosition(hull Coord) Coord {
-	for i := 0; i < 100; i++ {
-		pos := state.SpawnPoint
-		pos.X += rand.Int63n(hull.X*10+1) - hull.X*5
-		pos.Y += rand.Int63n(hull.Y*10+1) - hull.Y*5
-		tr := state.Trace(state.SpawnPoint, pos, hull, false)
-		if len(tr.Units) == 0 {
-			if tr.End != state.SpawnPoint && tr.HitWorld {
-				return tr.End
-			}
-			pos = tr.End
-			tr = state.Trace(pos, pos.Add(Coord{0, hull.Y * 10}), hull, false)
-			tr.Collide()
-			if tr.HitWorld && tr.End != pos {
-				return tr.End
-			}
-		} else if tr.HitWorld {
-			tr = state.Trace(tr.End, tr.End.Sub(Coord{0, hull.Y * 10}), hull, true)
-			pos = tr.End
-			tr = state.Trace(pos, pos.Add(Coord{0, hull.Y * 10}), hull, false)
-			tr.Collide()
-			if tr.End != pos {
-				return tr.End
+func (state *State) FindSpawnPosition(u *Unit) {
+	u.Position = func(hull Coord) Coord {
+		for i := 0; i < 100; i++ {
+			pos := state.SpawnPoint
+			pos.X += rand.Int63n(hull.X*10+1) - hull.X*5
+			pos.Y += rand.Int63n(hull.Y*10+1) - hull.Y*5
+			tr := state.Trace(state.SpawnPoint, pos, hull, false)
+			if len(tr.Units) == 0 {
+				if tr.End != state.SpawnPoint && tr.HitWorld {
+					return tr.End
+				}
+				pos = tr.End
+				tr = state.Trace(pos, pos.Add(Coord{0, hull.Y * 10}), hull, false)
+				tr.Collide(u)
+				if tr.HitWorld && tr.End != pos {
+					return tr.End
+				}
+			} else if tr.HitWorld {
+				tr = state.Trace(tr.End, tr.End.Sub(Coord{0, hull.Y * 10}), hull, true)
+				pos = tr.End
+				tr = state.Trace(pos, pos.Add(Coord{0, hull.Y * 10}), hull, false)
+				tr.Collide(u)
+				if tr.End != pos {
+					return tr.End
+				}
 			}
 		}
-	}
-	return state.SpawnPoint
+		return state.SpawnPoint
+	}(u.Size(state, u))
 }
 
 func (state *State) EachUnit(f func(*Unit)) {
@@ -332,7 +327,7 @@ func (state *State) Trace(start, end, hull Coord, worldOnly bool) *Trace {
 			return -1, 0, 0, 0
 		}
 
-		mins, maxs := u.Size.Hull()
+		mins, maxs := u.Size(state, u).Hull()
 		mins = mins.Add(u.Position)
 		maxs = maxs.Add(u.Position)
 

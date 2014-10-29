@@ -9,6 +9,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -64,7 +65,7 @@ func Render(img *image.RGBA, me res.Man, state *State, err error) {
 			draw.Draw(img, image.Rect(x, y-11, x+h, y-1), image.White, image.ZP, draw.Src)
 			draw.Draw(img, image.Rect(x+1, y-10, x+h-1, y-2), manfills[i], image.ZP, draw.Src)
 		} else if m.Respawn() != 0 && m.Lives() > 0 {
-			RenderText(img, fmt.Sprintf("Respawn in %s", time.Duration(m.Respawn()-state.Tick)*time.Second/TicksPerSecond), image.Pt(x, y), color.White, mancolors[i], false)
+			RenderText(img, fmt.Sprintf("Respawn in %s", time.Duration(m.Respawn()-state.Tick)*time.Second/TicksPerSecond), image.Pt(x, y), color.White, ManData[i].Color, false)
 		}
 		var lives string
 		if l := m.Lives(); l > 1 {
@@ -76,7 +77,7 @@ func Render(img *image.RGBA, me res.Man, state *State, err error) {
 		} else {
 			lives = fmt.Sprintf("%d Mans???", l)
 		}
-		RenderText(img, lives, image.Pt(x, y+12), color.White, mancolors[i], false)
+		RenderText(img, lives, image.Pt(x, y+12), color.White, ManData[i].Color, false)
 		ping := "disconnected"
 		if p := m.Ping(); p > 0 {
 			if p > time.Millisecond {
@@ -84,7 +85,7 @@ func Render(img *image.RGBA, me res.Man, state *State, err error) {
 			}
 			ping = p.String()
 		}
-		RenderText(img, ping, image.Pt(x, y+12*2), color.White, mancolors[i], false)
+		RenderText(img, ping, image.Pt(x, y+12*2), color.White, ManData[i].Color, false)
 	}
 }
 
@@ -302,12 +303,12 @@ func RenderText(dst *image.RGBA, text string, p image.Point, fg, bg color.Color,
 }
 
 var (
-	graphicsOnce sync.Once
-	mancolors    [res.Man_count]color.RGBA = [...]color.RGBA{
-		res.Man_Whip:    color.RGBA{192, 0, 0, 255},
-		res.Man_Density: color.RGBA{128, 128, 0, 255},
-		res.Man_Vacuum:  color.RGBA{0, 128, 0, 255},
-		res.Man_Normal:  color.RGBA{0, 0, 192, 255},
+	graphicsOnce  sync.Once
+	manspritessrc [res.Man_count][2]string = [...][2]string{
+		res.Man_Whip:    {res.ManWhipPng, res.ManWhipCrouchPng},
+		res.Man_Density: {res.ManDensityPng, res.ManDensityCrouchPng},
+		res.Man_Vacuum:  {res.ManVacuumPng, res.ManVacuumCrouchPng},
+		res.Man_Normal:  {res.ManNormalPng, res.ManNormalCrouchPng},
 	}
 	mansprites    [res.Man_count][2]*image.RGBA
 	manfills      [res.Man_count]*image.Uniform
@@ -321,6 +322,16 @@ var (
 	grubsprite    *image.RGBA
 )
 
+func readRGBA(s string) *image.RGBA {
+	src, err := png.Decode(strings.NewReader(s))
+	if err != nil {
+		panic(err)
+	}
+	dst := image.NewRGBA(src.Bounds().Sub(src.Bounds().Min))
+	draw.Draw(dst, dst.Rect, src, src.Bounds().Min, draw.Src)
+	return dst
+}
+
 func graphicsInit() {
 	graphicsOnce.Do(func() {
 		font, err := truetype.Parse([]byte(res.LuxisrTtf))
@@ -333,64 +344,43 @@ func graphicsInit() {
 			Style:  draw2d.FontStyleNormal,
 		}, font)
 
-		src, err := png.Decode(strings.NewReader(res.MansPng))
-		if err != nil {
-			panic(err)
-		}
-		dst := image.NewRGBA(src.Bounds())
-		draw.Draw(dst, dst.Rect, src, dst.Rect.Min, draw.Src)
-		if ManSize.Y < CrouchSize.Y || dst.Rect.Dy() != len(mansprites)*int(ManSize.Y/PixelSize) || dst.Rect.Dx() != int(ManSize.X/PixelSize+CrouchSize.X/PixelSize) {
-			panic("man size mismatch")
-		}
-		r1 := image.Rect(0, 0, int(ManSize.X/PixelSize), int(ManSize.Y/PixelSize)).Add(dst.Rect.Min)
-		r2 := image.Rect(int(ManSize.X/PixelSize), int(ManSize.X-CrouchSize.Y), int(ManSize.X/PixelSize+CrouchSize.X/PixelSize), int(ManSize.Y/PixelSize)).Add(dst.Rect.Min)
-		for i := range mansprites {
-			mansprites[i][0] = dst.SubImage(r1.Add(image.Pt(0, i*int(ManSize.Y/PixelSize)))).(*image.RGBA)
-			mansprites[i][1] = dst.SubImage(r2.Add(image.Pt(0, i*int(ManSize.Y/PixelSize)))).(*image.RGBA)
-		}
-		for i := range manfills {
-			manfills[i] = image.NewUniform(mancolors[i])
+		for i, d := range ManData {
+			mansprites[i][0] = readRGBA(manspritessrc[i][0])
+			if mansprites[i][0].Rect.Dx() != int(d.Size.X/PixelSize) || mansprites[i][0].Rect.Dy() != int(d.Size.Y/PixelSize) {
+				log.Panicln("man sprite size mismatch", res.Man(i))
+			}
+			mansprites[i][1] = readRGBA(manspritessrc[i][1])
+			if mansprites[i][1].Rect.Dx() != int(d.SizeCrouch.X/PixelSize) || mansprites[i][1].Rect.Dy() != int(d.SizeCrouch.Y/PixelSize) {
+				log.Panicln("man sprite crouch size mismatch", res.Man(i))
+			}
+			manfills[i] = image.NewUniform(d.Color)
 		}
 
-		src, err = png.Decode(strings.NewReader(res.TerrainPng))
-		if err != nil {
-			panic(err)
-		}
-		dst = image.NewRGBA(src.Bounds())
-		draw.Draw(dst, dst.Rect, src, dst.Rect.Min, draw.Src)
+		dst := readRGBA(res.TerrainPng)
 		if dst.Rect.Dx()%TileSize != 0 || dst.Rect.Dy() != TileSize {
-			panic("tile size mismatch")
+			log.Panic("tile size mismatch")
 		}
 		for x := dst.Rect.Min.X; x < dst.Rect.Max.X; x += TileSize {
 			terrain = append(terrain, dst.SubImage(image.Rect(x, dst.Rect.Min.Y, x+TileSize, dst.Rect.Max.Y)).(*image.RGBA))
 		}
 
-		src, err = png.Decode(strings.NewReader(res.TileSidePng))
-		if err != nil {
-			panic(err)
-		}
-		tileSide := image.NewGray(src.Bounds())
-		draw.Draw(tileSide, tileSide.Rect, src, tileSide.Rect.Min, draw.Src)
+		dst = readRGBA(res.TileSidePng)
+		tileSide := image.NewGray(dst.Rect)
+		draw.Draw(tileSide, tileSide.Rect, dst, tileSide.Rect.Min, draw.Src)
 		if tileSide.Rect.Dy() != TileSize {
-			panic("tile size mismatch")
+			log.Panic("tile size mismatch")
 		}
-		src, err = png.Decode(strings.NewReader(res.TileCornerInnerPng))
-		if err != nil {
-			panic(err)
-		}
-		tileCornerInner := image.NewGray(src.Bounds())
-		draw.Draw(tileCornerInner, tileCornerInner.Rect, src, tileCornerInner.Rect.Min, draw.Src)
+		dst = readRGBA(res.TileCornerInnerPng)
+		tileCornerInner := image.NewGray(dst.Rect)
+		draw.Draw(tileCornerInner, tileCornerInner.Rect, dst, tileCornerInner.Rect.Min, draw.Src)
 		if tileCornerInner.Rect.Dx() != tileCornerInner.Rect.Dy() || tileSide.Rect.Dx() != tileCornerInner.Rect.Dx() {
-			panic("tile size mismatch")
+			log.Panic("tile size mismatch")
 		}
-		src, err = png.Decode(strings.NewReader(res.TileCornerOuterPng))
-		if err != nil {
-			panic(err)
-		}
-		tileCornerOuter := image.NewGray(src.Bounds())
-		draw.Draw(tileCornerOuter, tileCornerOuter.Rect, src, tileCornerOuter.Rect.Min, draw.Src)
+		dst = readRGBA(res.TileCornerOuterPng)
+		tileCornerOuter := image.NewGray(dst.Rect)
+		draw.Draw(tileCornerOuter, tileCornerOuter.Rect, dst, tileCornerOuter.Rect.Min, draw.Src)
 		if tileCornerInner.Rect.Dx() != tileCornerOuter.Rect.Dx() || tileCornerInner.Rect.Dy() != tileCornerOuter.Rect.Dy() {
-			panic("tile size mismatch")
+			log.Panic("tile size mismatch")
 		}
 		{
 			r := image.Rect(0, 0, TileSize, TileSize)
@@ -453,33 +443,9 @@ func graphicsInit() {
 
 		offscreenfade = image.NewUniform(color.Alpha{0x40})
 		deadhaze = image.NewUniform(color.RGBA{64, 64, 64, 64})
-
-		src, err = png.Decode(strings.NewReader(res.Parallax0Png))
-		if err != nil {
-			panic(err)
-		}
-		parallax[0] = image.NewRGBA(src.Bounds())
-		draw.Draw(parallax[0], parallax[0].Rect, src, parallax[0].Rect.Min, draw.Src)
-
-		src, err = png.Decode(strings.NewReader(res.Parallax1Png))
-		if err != nil {
-			panic(err)
-		}
-		parallax[1] = image.NewRGBA(src.Bounds())
-		draw.Draw(parallax[1], parallax[1].Rect, src, parallax[1].Rect.Min, draw.Src)
-
-		src, err = png.Decode(strings.NewReader(res.LemonPng))
-		if err != nil {
-			panic(err)
-		}
-		lemonsprite = image.NewRGBA(src.Bounds())
-		draw.Draw(lemonsprite, lemonsprite.Rect, src, lemonsprite.Rect.Min, draw.Src)
-
-		src, err = png.Decode(strings.NewReader(res.GrubPng))
-		if err != nil {
-			panic(err)
-		}
-		grubsprite = image.NewRGBA(src.Bounds())
-		draw.Draw(grubsprite, grubsprite.Rect, src, grubsprite.Rect.Min, draw.Src)
+		parallax[0] = readRGBA(res.Parallax0Png)
+		parallax[1] = readRGBA(res.Parallax1Png)
+		lemonsprite = readRGBA(res.LemonPng)
+		grubsprite = readRGBA(res.GrubPng)
 	})
 }
