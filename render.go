@@ -79,7 +79,10 @@ func Render(img *image.RGBA, me res.Man, state *State, err error) {
 		RenderText(img, lives, image.Pt(x, y+12), color.White, mancolors[i], false)
 		ping := "disconnected"
 		if p := m.Ping(); p > 0 {
-			ping = (p / time.Millisecond * time.Millisecond).String()
+			if p > time.Millisecond {
+				p -= p % time.Millisecond
+			}
+			ping = p.String()
 		}
 		RenderText(img, ping, image.Pt(x, y+12*2), color.White, mancolors[i], false)
 	}
