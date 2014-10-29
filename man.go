@@ -275,10 +275,11 @@ func (m *ManUnitData) Respawn() uint64 {
 	return m.Respawn_
 }
 func (m *ManUnitData) Sprite(state *State, u *Unit) *image.RGBA {
-	if m.Crouching_ {
+	if m.Crouching() {
 		return mansprites[m.Man()][1]
+	} else {
+		return mansprites[m.Man()][0]
 	}
-	return mansprites[m.Man()][0]
 }
 func (m *ManUnitData) Target() Coord {
 	return m.Target_
