@@ -187,7 +187,11 @@ func Serve(conn net.Conn, in <-chan *res.Packet, out chan<- *res.Packet, state <
 					log.Println("failed to decode ping packet:", err)
 					return
 				}
-				inputCache.Tick = proto.Uint64(uint64(time.Since(t)))
+				since := time.Since(t)
+				if since <= 0 {
+					since = time.Nanosecond
+				}
+				inputCache.Tick = proto.Uint64(uint64(since))
 				go Send(input, &res.Packet{
 					Type: Type_Input,
 					Man:  pman,

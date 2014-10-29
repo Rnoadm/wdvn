@@ -33,6 +33,7 @@ type Man interface {
 	Input(*res.Packet)
 	Checkpoint() *Coord
 	Crouching() bool
+	Ping() time.Duration
 }
 
 func init() {
@@ -205,6 +206,9 @@ func (m *ManUnitData) Crouching() bool {
 }
 func (m *ManUnitData) CollideWith(state *State, u, o *Unit) bool {
 	return u != o
+}
+func (m *ManUnitData) Ping() time.Duration {
+	return m.Ping_
 }
 
 type WhipMan struct {

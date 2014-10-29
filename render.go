@@ -52,15 +52,17 @@ func Render(img *image.RGBA, me res.Man, state *State, err error) {
 
 	for i := range state.Mans {
 		m := state.Mans[i].UnitData.(Man)
-		x, y := 2, 12
+		x, y := 2, 12+4
 		if i&1 == 1 {
-			y = img.Rect.Dy() - 24
+			y = img.Rect.Dy() - 12*2 - 4
 		}
 		if i&2 == 2 {
 			x = img.Rect.Dx() - 112
 		}
 		if state.Mans[i].Health > 0 {
-			draw.Draw(img, image.Rect(x, y-4, x+int(state.Mans[i].Health*110/ManHealth), y), manfills[i], image.ZP, draw.Src)
+			h := int(state.Mans[i].Health * 110 / ManHealth)
+			draw.Draw(img, image.Rect(x, y-11, x+h, y-1), image.White, image.ZP, draw.Src)
+			draw.Draw(img, image.Rect(x+1, y-10, x+h-1, y-2), manfills[i], image.ZP, draw.Src)
 		} else if m.Respawn() != 0 && m.Lives() > 0 {
 			RenderText(img, fmt.Sprintf("Respawn in %s", time.Duration(m.Respawn()-state.Tick)*time.Second/TicksPerSecond), image.Pt(x, y), color.White, mancolors[i], false)
 		}
@@ -74,7 +76,12 @@ func Render(img *image.RGBA, me res.Man, state *State, err error) {
 		} else {
 			lives = fmt.Sprintf("%d Mans???", l)
 		}
-		RenderText(img, lives, image.Pt(x, y+14), color.White, mancolors[i], false)
+		RenderText(img, lives, image.Pt(x, y+12), color.White, mancolors[i], false)
+		ping := "disconnected"
+		if p := m.Ping(); p > 0 {
+			ping = (p / time.Millisecond * time.Millisecond).String()
+		}
+		RenderText(img, ping, image.Pt(x, y+12*2), color.White, mancolors[i], false)
 	}
 }
 
